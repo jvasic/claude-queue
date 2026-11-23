@@ -83,4 +83,6 @@ its files there, whichever tree the merge runs in. Follow the repo notes in `con
 Commit only on the target branch, and only in steps 5 and 6. One merge at a time: never run
 two merges into any branch at once. Never push, never `git stash`, never check out another
 branch in the main tree. Delete only `<branch_prefix>*` branches, and only in step 7. A
-refused tool call means stop and report it; never work around it.
+refused tool call means stop and report it; never work around it. Resolve conflicts with the
+Edit and Write tools, not with shell redirection or heredocs, which permission checks often
+refuse.

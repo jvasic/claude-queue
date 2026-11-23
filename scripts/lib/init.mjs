@@ -42,9 +42,28 @@ function writeIfMissing(file, text, lines, label) {
   lines.push(`created ${label}`)
 }
 
+// A repository that already has claude-queue/config.json is set up: change nothing, say so,
+// and name any part that is missing, for the user to restore by hand.
+function already(root, q) {
+  const lines = [`ALREADY INITIALIZED ${q}`]
+  for (const f of ['queue.md', 'log.md', 'merged.md']) {
+    if (!exists(path.join(q, f))) lines.push(`missing ${QUEUE_DIR}/${f}`)
+  }
+  const gi = path.join(root, '.gitignore')
+  const have = new Set((exists(gi) ? fs.readFileSync(gi, 'utf8') : '').split(/\r?\n/).map(l => l.trim()))
+  for (const l of IGNORE) {
+    if (!have.has(l) && !have.has(l.replace(/^\//, ''))) lines.push(`missing .gitignore line ${l}`)
+  }
+  const md = path.join(root, 'CLAUDE.md')
+  if (!(exists(md) && fs.readFileSync(md, 'utf8').includes(NOTE_HEADING))) lines.push('missing the queue note in CLAUDE.md')
+  return lines
+}
+
 export function init(root, { preset = 'none' } = {}) {
-  const lines = []
+  readPreset(preset)
   const q = queueDir(root)
+  if (exists(path.join(q, 'config.json'))) return already(root, q)
+  const lines = []
   fs.mkdirSync(q, { recursive: true })
   writeIfMissing(path.join(q, 'config.json'), JSON.stringify(buildConfig(root, preset), null, 2) + '\n', lines, `${QUEUE_DIR}/config.json (preset ${preset})`)
   writeIfMissing(

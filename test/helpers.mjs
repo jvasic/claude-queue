@@ -16,8 +16,11 @@ export function sh(args, cwd) {
   return r.stdout.trim()
 }
 
-export function cli(args, cwd, input) {
-  const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8', input })
+// Runs the script without the calling session's CLAUDE_CODE_SESSION_ID, unless env sets one.
+export function cli(args, cwd, input, env = {}) {
+  const base = { ...process.env }
+  delete base.CLAUDE_CODE_SESSION_ID
+  const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8', input, env: { ...base, ...env } })
   return { code: r.status, out: (r.stdout ?? '').trim(), err: (r.stderr ?? '').trim() }
 }
 

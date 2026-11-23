@@ -163,13 +163,39 @@ test('init: dry run on a fresh repo, then a second run keeps everything', () => 
   const md = fs.readFileSync(path.join(root, 'CLAUDE.md'), 'utf8')
   assert.match(md, /^# Project\n\nRules\.\n\n## Task queue/)
 
+  assert.equal(sh(['status', '--porcelain', '--', 'claude-queue'], root), '', 'claude-queue/ is ignored')
+
+  // A second run, even with another preset, changes nothing at all.
   fs.writeFileSync(path.join(q, 'queue.md'), 'kept\n')
-  const again = cli(['init'], root)
-  assert.match(again.out, /kept claude-queue\/config\.json/)
+  const cfgText = fs.readFileSync(path.join(q, 'config.json'), 'utf8')
+  for (let i = 0; i < 2; i++) {
+    const again = cli(['init', '--preset', 'node'], root)
+    assert.equal(again.code, 0, again.out)
+    assert.equal(again.out, `ALREADY INITIALIZED ${q}`)
+  }
+  assert.equal(fs.readFileSync(path.join(q, 'config.json'), 'utf8'), cfgText)
   assert.equal(fs.readFileSync(path.join(q, 'queue.md'), 'utf8'), 'kept\n')
   assert.equal(fs.readFileSync(path.join(root, 'CLAUDE.md'), 'utf8'), md)
   assert.equal(fs.readFileSync(path.join(root, '.gitignore'), 'utf8'), gi)
-  assert.equal(sh(['status', '--porcelain', '--', 'claude-queue'], root), '', 'claude-queue/ is ignored')
+})
+
+test('init in a set-up repo names what is missing and restores none of it', () => {
+  const root = repo()
+  const q = path.join(root, 'claude-queue')
+  fs.writeFileSync(path.join(root, '.gitignore'), 'node_modules/\n/claude-queue/\n')
+  const r = cli(['init'], root)
+  assert.equal(r.code, 0, r.out)
+  assert.deepEqual(r.out.split(/\r?\n/), [
+    `ALREADY INITIALIZED ${q}`,
+    'missing claude-queue/queue.md',
+    'missing claude-queue/log.md',
+    'missing claude-queue/merged.md',
+    'missing .gitignore line /.claude/worktrees/',
+    'missing the queue note in CLAUDE.md',
+  ])
+  assert.deepEqual(fs.readdirSync(q), ['config.json'])
+  assert.equal(fs.readFileSync(path.join(root, '.gitignore'), 'utf8'), 'node_modules/\n/claude-queue/\n')
+  assert.equal(fs.existsSync(path.join(root, 'CLAUDE.md')), false)
 })
 
 test('init refuses an unknown preset', () => {

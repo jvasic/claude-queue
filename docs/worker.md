@@ -23,7 +23,9 @@ Below, `Q` means `node "<plugin root>/scripts/queue.mjs"`, run from the repo roo
 3. **Images.** If the prompt references image files (`![...](path)` or a bare path, relative
    to `claude-queue/`), Read every one before starting.
 4. **Implement**, editing only inside the worktree. The smallest clean change that does what
-   was asked.
+   was asked. Change files with the Edit and Write tools, not with shell redirection or
+   heredocs (`cat > file <<EOF`): permission checks often cannot read such commands and
+   refuse them, which stops your task. Keep each shell command to one plain step.
 5. **Review** your own diff (`git -C <worktree> diff <base>...` plus uncommitted changes):
    correctness, missed call sites, scope creep.
 6. **Check.** `Q check --worktree <worktree> --tests <test paths>` with the tests for the area

@@ -1,5 +1,5 @@
 {
-  "_comment": "Example for a Node / TypeScript repo with eslint, tsc and npm test.",
+  "_comment": "Example for a Node / TypeScript repo with eslint, tsc and a jest or vitest test script, which run only the test paths passed after --. When the test script names its own files (node --test \"test/*.test.js\"), call the runner directly instead: node --test {tests}.",
   "worktree_links": ["node_modules", ".env"],
   "venv": "",
   "checks": {

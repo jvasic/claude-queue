@@ -185,6 +185,22 @@ async function activate($: EngineInterface): Promise<void> {
   void $.ui.open({ id: PANE, title: 'Queue', rows: askedRows })
 }
 
+// The coordinator can start without a typed /queue-start (for example /queue-init starts it
+// through the Skill tool). `lock acquire` then writes this session's id into the marker, and
+// the next tick opens the pane and names the session.
+async function wakeIfCoordinator($: EngineInterface): Promise<void> {
+  if ((await $.state.get(isActive)).value === true) return
+  let marker = ''
+  try {
+    marker = (await $.fs.read(MARKER)).trim()
+  } catch {
+    return
+  }
+  if (marker === '' || marker !== (await $.session.id())) return
+  await activate($)
+  await rename($)
+}
+
 async function fitHeight($: EngineInterface): Promise<void> {
   if (wantedRows === 0 || wantedRows === askedRows) return
   if ((await $.state.get(isActive)).value !== true) return
@@ -200,7 +216,7 @@ function minutes(ms: number): string {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'queue-panel', description: 'Show the queue coordinator pane' })
-    $.clock.every(3000, () => void refresh($))
+    $.clock.every(3000, () => void wakeIfCoordinator($).then(() => refresh($)).catch(() => {}))
     try {
       const marker = (await $.fs.read(MARKER)).trim()
       if (marker !== '' && marker === (await $.session.id())) await activate($)

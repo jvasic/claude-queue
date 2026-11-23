@@ -51,8 +51,34 @@ test('hooks: the coordinator session is remembered and its end releases the lock
   cli(['lock', 'acquire'], root)
   send('session-end', { session_id: 's1' })
   assert.equal(cli(['lock', 'status'], root).out, 'LOCKED', 'another session ending keeps the lock')
+  // A second /queue-start while the lock is held does not take the marker, so its end
+  // leaves the running coordinator's lock alone.
+  send('prompt-submit', { session_id: 's3', prompt: '/queue-start' })
+  assert.equal(fs.readFileSync(marker, 'utf8').trim(), 's2')
+  send('session-end', { session_id: 's3' })
+  assert.equal(cli(['lock', 'status'], root).out, 'LOCKED')
   send('session-end', { session_id: 's2' })
   assert.equal(cli(['lock', 'status'], root).out, 'UNLOCKED')
+  assert.equal(fs.existsSync(marker), false)
+  // /queue-init starts the coordinator after setting up, so it counts too.
+  send('prompt-submit', { session_id: 's4', prompt: '/task-queue:queue-init node' })
+  assert.equal(fs.readFileSync(marker, 'utf8').trim(), 's4')
+})
+
+test('lock acquire records the session from CLAUDE_CODE_SESSION_ID; release clears it', () => {
+  const root = repo()
+  const marker = path.join(root, 'claude-queue', '.runner-session')
+  assert.equal(cli(['lock', 'acquire'], root).out, 'ACQUIRED')
+  assert.equal(fs.existsSync(marker), false, 'no variable, no marker')
+  cli(['lock', 'release'], root)
+  assert.equal(cli(['lock', 'acquire'], root, undefined, { CLAUDE_CODE_SESSION_ID: 'abc' }).out, 'ACQUIRED')
+  assert.equal(fs.readFileSync(marker, 'utf8').trim(), 'abc')
+  assert.equal(cli(['lock', 'acquire'], root, undefined, { CLAUDE_CODE_SESSION_ID: 'other' }).out, 'LOCKED')
+  assert.equal(fs.readFileSync(marker, 'utf8').trim(), 'abc', 'a refused acquire keeps the marker')
+  cli(['hook', 'session-end'], root, JSON.stringify({ cwd: root, session_id: 'abc' }))
+  assert.equal(cli(['lock', 'status'], root).out, 'UNLOCKED')
+  cli(['lock', 'acquire'], root, undefined, { CLAUDE_CODE_SESSION_ID: 'abc' })
+  assert.equal(cli(['lock', 'release'], root).out, 'RELEASED')
   assert.equal(fs.existsSync(marker), false)
 })
 

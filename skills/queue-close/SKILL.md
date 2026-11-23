@@ -21,7 +21,7 @@ line and do nothing else. If another session holds the lock, tell the user to ru
 3. **Record each unfinished task** in `queue.md`. Tag it `[paused]` and add these lines under
    the title, from the worker's answer:
    - `> branch: <branch>`
-   - `> worktree: <path>` (only if it still exists)
+   - `> worktree: <path>` (only if it still exists; with forward slashes)
    - `> done: <what is finished>`
    - `> remains: <what is left>`
 
@@ -37,4 +37,6 @@ line and do nothing else. If another session holds the lock, tell the user to ru
 6. **Tell the user** it is safe to close, in one line: how many tasks are paused and that
    `/queue-start` resumes them.
 
-Never push, never `git stash`, never remove a worktree or branch of a paused task.
+Edit `queue.md` and `log.md` with the Edit tool only, never from the shell (`sed`, heredocs,
+`cat >>`): text with backslashes, such as a Windows path, comes out mangled. Never push, never
+`git stash`, never remove a worktree or branch of a paused task.

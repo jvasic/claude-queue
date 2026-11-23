@@ -23,8 +23,8 @@ formats are in `${CLAUDE_PLUGIN_ROOT}/docs/queue-format.md`.
 3. **Keep the history.** For each task to remove, make sure `claude-queue/log.md` has an entry
    for it (search by title or branch). If not, append one first: date, title, tag, branch,
    `> merged:` target if any, and the prompt's first line.
-4. **Remove.** Delete each picked task with its separator line, one targeted edit per task,
-   never rewriting the whole file. The file keeps the form `---`, task, `---`, task, ... and
+4. **Remove.** Delete each picked task with its separator line, one targeted edit per task
+   with the Edit tool (never `sed` or other shell edits), never rewriting the whole file. The file keeps the form `---`, task, `---`, task, ... and
    keeps its leading `---`. If an edit fails because the file changed, read it again and redo
    it.
 5. **Report** one line per removed task (tag and title), then the count left by tag.

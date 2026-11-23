@@ -148,9 +148,11 @@ refused tool call, or when you are unsure what the user wants. When in doubt, as
 
 ## Editing queue.md and log.md
 
-You are the only writer. Make targeted edits to one task at a time, never rewrite the whole
-file. If an edit fails because the file changed, read it again and redo the edit. After each
-edit run `Q lock refresh`.
+You are the only writer. Make targeted edits to one task at a time with the Edit tool (Write
+only for a new file), never rewrite the whole file. Never change these files from the shell
+(`sed`, `cat >>`, heredocs, `echo >`): text with backslashes, such as a Windows path, comes
+out mangled, and permission checks often refuse such commands. If an edit fails because the
+file changed, read it again and redo the edit. After each edit run `Q lock refresh`.
 
 ## Helpers
 
