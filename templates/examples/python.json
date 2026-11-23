@@ -1,0 +1,14 @@
+{
+  "_comment": "Example for a Python repo with a .venv at the root, ruff and pytest.",
+  "worktree_links": [".venv", ".env"],
+  "venv": ".venv",
+  "checks": {
+    "changed": [
+      { "name": "ruff", "when": ["*.py"], "run": "ruff check {files}" },
+      { "name": "pytest", "when": ["*.py"], "run": "python -m pytest -q {tests}" }
+    ],
+    "full": [
+      { "name": "pytest", "run": "python -m pytest -q" }
+    ]
+  }
+}

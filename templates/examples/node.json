@@ -1,0 +1,15 @@
+{
+  "_comment": "Example for a Node / TypeScript repo with eslint, tsc and npm test.",
+  "worktree_links": ["node_modules", ".env"],
+  "venv": "",
+  "checks": {
+    "changed": [
+      { "name": "eslint", "when": ["*.{js,jsx,ts,tsx,mjs,cjs}"], "run": "npx eslint {files}" },
+      { "name": "typecheck", "when": ["*.{ts,tsx}"], "run": "npx tsc --noEmit" },
+      { "name": "test", "when": ["*.{js,jsx,ts,tsx,mjs,cjs}"], "run": "npm test --silent -- {tests}" }
+    ],
+    "full": [
+      { "name": "test", "run": "npm test --silent" }
+    ]
+  }
+}

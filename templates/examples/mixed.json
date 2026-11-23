@@ -1,0 +1,17 @@
+{
+  "_comment": "Example for a repo with a Python backend/ and a TypeScript frontend/. ruff counts only errors on changed lines, for a codebase that carries old ones.",
+  "worktree_links": [".venv", "backend/.env", "frontend/node_modules", "frontend/.env"],
+  "venv": ".venv",
+  "checks": {
+    "changed": [
+      { "name": "ruff", "when": ["backend/**/*.py"], "cwd": "backend", "run": "ruff check {files}", "changed_lines_only": true },
+      { "name": "pytest", "when": ["backend/**/*.py"], "cwd": "backend", "run": "python -m pytest -q {tests}" },
+      { "name": "typecheck", "when": ["frontend/**/*.{ts,tsx}"], "cwd": "frontend", "run": "npx tsc --noEmit" },
+      { "name": "eslint", "when": ["frontend/**/*.{ts,tsx}"], "cwd": "frontend", "run": "npx eslint --quiet {files}" }
+    ],
+    "full": [
+      { "name": "pytest", "cwd": "backend", "run": "python -m pytest -q" },
+      { "name": "frontend build", "cwd": "frontend", "run": "npm run build" }
+    ]
+  }
+}

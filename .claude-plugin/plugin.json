@@ -1,0 +1,11 @@
+{
+  "name": "task-queue",
+  "version": "0.1.0",
+  "description": "A coordinator session that keeps a task queue and runs background Claude workers, each on its own branch and git worktree, then merges finished branches into batch branches.",
+  "author": { "name": "Jovan Vasic" },
+  "homepage": "https://github.com/OWNER/claude-queue",
+  "repository": "https://github.com/OWNER/claude-queue",
+  "license": "MIT",
+  "keywords": ["queue", "workers", "worktree", "background agents", "parallel", "coordinator"],
+  "types": "./types/index.d.ts"
+}

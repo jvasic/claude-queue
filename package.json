@@ -1,0 +1,12 @@
+{
+  "name": "task-queue-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tests for the task-queue Claude Code plugin. Not published to npm.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "test": "node --test test/check-init.test.mjs test/lock-hooks-config.test.mjs test/worktree.test.mjs"
+  }
+}

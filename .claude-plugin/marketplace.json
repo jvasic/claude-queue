@@ -1,0 +1,13 @@
+{
+  "name": "claude-queue",
+  "description": "The task-queue plugin for Claude Code: a coordinator that runs background workers on their own branches and worktrees.",
+  "owner": { "name": "Jovan Vasic" },
+  "plugins": [
+    {
+      "name": "task-queue",
+      "source": "./",
+      "description": "A coordinator session that keeps a task queue and runs background Claude workers, each on its own branch and git worktree.",
+      "category": "productivity"
+    }
+  ]
+}
