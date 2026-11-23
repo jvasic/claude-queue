@@ -14,11 +14,11 @@ script and hooks run with `node`.
 1. Install the plugin. At the prompt of a Claude Code session:
 
    ```
-   /plugin marketplace add OWNER/claude-queue
+   /plugin marketplace add jvasic/claude-queue
    /plugin install task-queue@claude-queue
    ```
 
-   Or from a shell: `claude plugin install task-queue --marketplace OWNER/claude-queue`.
+   Or from a shell: `claude plugin install task-queue --marketplace jvasic/claude-queue`.
 
 2. In your repository, set it up once:
 

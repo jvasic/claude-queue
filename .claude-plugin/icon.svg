@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- task-queue icon: three lanes of agents waiting in line, the front one at work. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3B5BDB"/>
+      <stop offset="1" stop-color="#1E2A78"/>
+    </linearGradient>
+    <g id="agent">
+      <circle cx="0" cy="-15" r="13"/>
+      <rect x="-20" y="2" width="40" height="28" rx="14"/>
+    </g>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <g id="lanes" fill="#FFFFFF" fill-opacity="0.09">
+    <rect x="44" y="104" width="424" height="88" rx="44"/>
+    <rect x="44" y="212" width="424" height="88" rx="44"/>
+    <rect x="44" y="320" width="424" height="88" rx="44"/>
+  </g>
+
+  <!-- Lane 1 -->
+  <g fill="#FFFFFF">
+    <use href="#agent" x="104" y="148" fill-opacity="0.35"/>
+    <use href="#agent" x="168" y="148" fill-opacity="0.55"/>
+    <use href="#agent" x="232" y="148" fill-opacity="0.8"/>
+    <use href="#agent" x="300" y="148"/>
+  </g>
+  <rect x="346" y="118" width="90" height="60" rx="14" fill="#FFFFFF"/>
+  <rect x="360" y="132" width="62" height="9" rx="4.5" fill="#3B5BDB"/>
+  <rect x="360" y="155" width="40" height="9" rx="4.5" fill="#FBBF24"/>
+
+  <!-- Lane 2 -->
+  <g fill="#FFFFFF">
+    <use href="#agent" x="168" y="256" fill-opacity="0.55"/>
+    <use href="#agent" x="232" y="256" fill-opacity="0.8"/>
+    <use href="#agent" x="300" y="256"/>
+  </g>
+  <rect x="346" y="226" width="90" height="60" rx="14" fill="#FFFFFF"/>
+  <rect x="360" y="240" width="62" height="9" rx="4.5" fill="#3B5BDB"/>
+  <rect x="360" y="263" width="24" height="9" rx="4.5" fill="#FBBF24"/>
+
+  <!-- Lane 3 -->
+  <g fill="#FFFFFF">
+    <use href="#agent" x="104" y="364" fill-opacity="0.35"/>
+    <use href="#agent" x="168" y="364" fill-opacity="0.55"/>
+    <use href="#agent" x="232" y="364" fill-opacity="0.8"/>
+    <use href="#agent" x="300" y="364"/>
+  </g>
+  <rect x="346" y="334" width="90" height="60" rx="14" fill="#FFFFFF"/>
+  <rect x="360" y="348" width="62" height="9" rx="4.5" fill="#3B5BDB"/>
+  <rect x="360" y="371" width="54" height="9" rx="4.5" fill="#FBBF24"/>
+</svg>
