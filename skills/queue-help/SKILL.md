@@ -11,7 +11,8 @@ A coordinator session keeps a list of tasks (claude-queue/queue.md) and runs bac
 workers on them, each on its own branch and worktree. You describe work; it gets done and
 waits for you.
 
-SET UP     /queue-init once per repo. /queue-options shows and changes the settings.
+SET UP     /queue-init once per repo; it also starts the coordinator. /queue-options shows
+           and changes the settings.
 START      /queue-start (or /queue-coordinator). Auto mode (Shift+Tab) lets workers run
            without stopping for permission prompts.
 ADD WORK   Just describe it. Or /qw <task> (start now), /qw N <task> (split between N

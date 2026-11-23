@@ -13,8 +13,10 @@ argument-hint: "[none | python | node | mixed]"
    nothing and prints `ALREADY INITIALIZED` with a `missing ...` line for any part that is
    gone. Tell the user the repository is already set up and that nothing was changed; list
    the missing parts, if any, for them to restore by hand. Point to `/queue-options` for
-   the settings. Then ask whether to start the coordinator
-   now; if they say yes, do step 8. Stop here either way: steps 3 to 7 are for a new setup.
+   the settings. Then `Q lock status`: if it prints `LOCKED`, a coordinator is already
+   running in another session; say so and that work goes to it. Otherwise ask whether to
+   start the coordinator now; if they say yes, do step 6 and end with its usual short start
+   summary. Stop here either way: steps 3 to 7 are for a new setup.
 3. **Pick a preset**, unless the user named one: `python` for a Python repo (a
    `pyproject.toml`, `requirements*.txt` or `setup.py` at the root), `node` for a Node repo
    (a `package.json` at the root), `mixed` when Python and Node code sit in separate
@@ -36,16 +38,24 @@ argument-hint: "[none | python | node | mixed]"
    - `base_branch` is the branch new work starts from.
    Keep commands that need a running service or a database out of `checks` unless the repo's
    tests set that up themselves. Then run `Q config show`; it fails if the JSON is broken.
-6. **Report**, short: the preset, the files created, the checks in one line each, and two
-   notes:
-   - `.gitignore` and `CLAUDE.md` changed in the working tree and are not committed; commit
-     them when convenient. Do not commit them yourself.
-   - Repo rules for workers (test policy, migrations, areas not to touch) belong in
-     `CLAUDE.md` or in `notes` in `config.json`; `/queue-options` changes the settings.
-7. **Welcome.** Then show this, as it is:
+6. **Start the coordinator.** Load the `task-queue:queue-start` skill with the Skill tool
+   (if that fails, read `${CLAUDE_PLUGIN_ROOT}/skills/queue-start/SKILL.md`, where the
+   CLAUDE_PLUGIN_ROOT placeholder means the plugin folder named above) and follow its Start
+   steps: from here on this session is the coordinator. Do not send its start summary as a
+   message of its own; step 7 replaces it. If its lock is taken by another coordinator, the
+   setup is still done: say so in step 7 instead of the welcome.
+7. **Your last message** of this turn is the report and then the welcome, in this order,
+   nothing after it:
+   - **Report**, short: the preset, the files created, the checks in one line each, and two
+     notes: `.gitignore` and `CLAUDE.md` changed in the working tree and are not committed
+     (commit them when convenient; do not commit them yourself); repo rules for workers
+     (test policy, migrations, areas not to touch) belong in `CLAUDE.md` or in `notes` in
+     `config.json`, and `/queue-options` changes the settings. If the coordinator resumed
+     or started anything, one line on that.
+   - **Welcome**, exactly this text, with <max_workers> replaced by the number in the config:
 
    > **The task queue is ready.** This session is now the queue coordinator. Describe work
-   > in plain words and it becomes a task; up to `<max_workers>` background workers each do
+   > in plain words and it becomes a task; up to <max_workers> background workers each do
    > one on its own branch, in its own worktree, while your working tree stays as it is.
    >
    > - **Add work:** just describe it, one message or many. `/qw <task>` starts one right
@@ -59,13 +69,5 @@ argument-hint: "[none | python | node | mixed]"
    >
    > Run this session in auto mode (Shift+Tab), or with permission rules that let workers
    > edit files and run checks, so they do not stop for prompts.
-
-   with `<max_workers>` read from the config.
-8. **Start the coordinator.** Load the `task-queue:queue-start` skill with the Skill tool
-   (if that fails, read `${CLAUDE_PLUGIN_ROOT}/skills/queue-start/SKILL.md`, where the
-   CLAUDE_PLUGIN_ROOT placeholder means the plugin folder named above) and follow it: from
-   here on this session is the coordinator. Its start summary can be one line when the
-   queue is empty, since the welcome said the rest. If its lock is taken by another
-   coordinator, say so; the setup itself is done either way.
 
 Change nothing else in the repo.

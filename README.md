@@ -20,17 +20,18 @@ script and hooks run with `node`.
 
    Or from a shell: `claude plugin install task-queue --marketplace jvasic/claude-queue`.
 
-2. In your repository, set it up once:
+2. Switch to auto mode (Shift+Tab), so background workers can edit files and run checks
+   without stopping for permission prompts. Then, in your repository, set it up once:
 
    ```
    /queue-init
    ```
 
    It creates `claude-queue/` (settings and the queue, git-ignored), adds two lines to
-   `.gitignore`, appends a short note to `CLAUDE.md`, and fits the checks to your repo.
+   `.gitignore`, appends a short note to `CLAUDE.md`, fits the checks to your repo, shows a
+   short quickstart and starts the coordinator in this session.
 
-3. Switch to auto mode (Shift+Tab), so background workers can edit files and run checks
-   without stopping for permission prompts, then start the coordinator:
+3. Next time, start the coordinator with:
 
    ```
    /queue-start
@@ -46,7 +47,7 @@ The short names work as long as no other command uses them.
 
 | Command | What it does |
 | --- | --- |
-| `/queue-init` | Sets the repository up: `claude-queue/` with `config.json`, `queue.md`, `log.md`; `.gitignore` lines; a note in `CLAUDE.md`; checks fitted to the repo. |
+| `/queue-init` | Sets the repository up: `claude-queue/` with `config.json`, `queue.md`, `log.md`; `.gitignore` lines; a note in `CLAUDE.md`; checks fitted to the repo. Then starts the coordinator. In a repository that is already set up it changes nothing. |
 | `/queue-start` | Makes the session the coordinator. `/queue-coordinator` is the same. |
 | `/qw <task>` | Starts a worker on the task now, ahead of the waiting ones. `/qw N <task>` splits the work between N workers. `/qw <session>: <task>` sends it to another open session and relays the answer. |
 | `/queue-merge <target> [branches]` | Applies finished branches onto the target, one commit each, runs the full suite once, deletes the applied branches. The coordinator normally does this for you through a merge agent. |
@@ -168,7 +169,7 @@ The scripts add a few guarantees of their own:
   any link is left inside it, so a delete can never reach through a link into your main tree.
 - A slug is lowercase letters, digits and dashes only, so it can never name a path outside
   `.claude/worktrees/`.
-- `/queue-init` never overwrites an existing file.
+- `/queue-init` changes nothing in a repository that is already set up.
 
 ## The script
 
