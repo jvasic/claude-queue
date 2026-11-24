@@ -8,12 +8,16 @@ Fugue No. 5 in D major (BWV 850), played by Kimiko Ishizaka, CC0. Made with
 [promo-vid-but-sweet](https://github.com/mrsladoje/promo-vid-but-sweet). Task names beyond the
 README's own examples are illustrative.*
 
+------------------------------------------
+
 A simple Claude Code plugin that turns one session into a **queue coordinator**. 
 
 You can prompt the coordinator continuously, and it starts background Claude workers and manages them for you. The coordinator
 itself stays free, so you don't need to wait before queuing the next task on your mind. 
 
 With this plugin, you also don't need to juggle multiple sessions anymore, as the coordinator simply gets everything back to you. 
+
+-----------------------------------------
 
 You just describe the tasks; the coordinator writes them to a queue, runs up to four (customizable) background Claude workers at once, 
 each on its own branch in its own git worktree, brings their questions to you, and
