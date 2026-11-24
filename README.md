@@ -2,7 +2,7 @@
 
 https://github.com/user-attachments/assets/74719dc8-bba2-48fd-b7fe-ead69ee3eb26
 
-*27 s, silent here; [click for the version with sound](docs/media/demo.mp4). Music: J. S. Bach,
+*27 s. Music: J. S. Bach,
 Fugue No. 5 in D major (BWV 850), played by Kimiko Ishizaka, CC0. Made with
 [fframes](https://github.com/dmtrKovalenko/fframes), following the method in
 [promo-vid-but-sweet](https://github.com/mrsladoje/promo-vid-but-sweet). Task names beyond the
