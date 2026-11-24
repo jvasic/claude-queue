@@ -1,5 +1,13 @@
 # task-queue
 
+<video src="docs/media/demo.mp4" poster="docs/media/demo-poster.jpg" width="720" controls muted playsinline>
+  <a href="docs/media/demo.mp4"><img src="docs/media/demo-poster.jpg" alt="Demo film, 27 seconds: a paper to-do list beside the queue pane, tasks picked up, one question answered, three branches merged" width="720"></a>
+</video>
+
+*27 s, unmute for sound. Music: J. S. Bach, Fugue No. 5 in D major (BWV 850), played by
+Kimiko Ishizaka, CC0. Made with [fframes](https://github.com/dmtrKovalenko/fframes). Task
+names beyond the README's own examples are illustrative.*
+
 A Claude Code plugin that turns one session into a **queue coordinator**. You describe work in
 plain words; the coordinator writes it to a queue, runs up to four background Claude workers at
 once, each on its own branch in its own git worktree, brings their questions to you, and
