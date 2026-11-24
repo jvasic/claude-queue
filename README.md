@@ -1,6 +1,6 @@
 # task-queue
 
-<a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="Demo film, 27 seconds: a paper to-do list beside the queue pane, tasks picked up, one question answered, three branches merged" width="720"></a>
+https://github.com/user-attachments/assets/74719dc8-bba2-48fd-b7fe-ead69ee3eb26
 
 *27 s, silent here; [click for the version with sound](docs/media/demo.mp4). Music: J. S. Bach,
 Fugue No. 5 in D major (BWV 850), played by Kimiko Ishizaka, CC0. Made with
