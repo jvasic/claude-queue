@@ -1,4 +1,4 @@
-# task-queue
+# claude-queue (task-queue, as the official plugin name)
 
 https://github.com/user-attachments/assets/74719dc8-bba2-48fd-b7fe-ead69ee3eb26
 
