@@ -1,5 +1,5 @@
 import type { On } from 'claude-code'
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 
 import { findQueueDir, parseListing, parseQueue } from './register'
 
@@ -155,10 +155,14 @@ test('a paused task is its own tag, not waiting', async () => {
 })
 
 // A project at /repo whose shell has cd'd into a subfolder: only absolute paths under the
-// project root reach the files, so a read relative to the working directory fails.
-function project(on: On, files: Record<string, string>): void {
+// project root reach the files, so a read relative to the working directory fails. Returns
+// the files (to change them) and what the plugin wrote, opened and ran.
+type Seen = { writes: string[]; opened: number; renamed: string[]; clock: ReturnType<typeof mock.clock> }
+
+function project(on: On, files: Record<string, string>): Seen {
+  const seen: Seen = { writes: [], opened: 0, renamed: [], clock: mock.clock(on, { now: 1000 }) }
   on('session.root', () => ({ value: '/repo' }))
-  on('session.cwd', () => ({ value: '/repo/claude-queue' }))
+  on('session.cwd', () => ({ value: '/repo/.claude/queue' }))
   on('session.id', () => ({ value: 'me' }))
   // The engine hands these hooks the path resolved (C:\\repo\\... on Windows): compare it
   // in one spelling.
@@ -171,11 +175,33 @@ function project(on: On, files: Record<string, string>): void {
     if (text === undefined) throw new Error(`ENOENT: ${e.path}`)
     return { value: text }
   })
+  on('fs.write', (_, e) => {
+    files[norm(e.path)] = e.text
+    seen.writes.push(norm(e.path))
+    return { value: undefined }
+  })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('command.register', () => ({ value: { command: 'queue-panel' } }))
+  on('command.run', (_, e) => {
+    seen.renamed.push(e.args)
+    return { text: '' }
+  })
   on('agent.list', () => ({ value: [] }))
-  on('clock.now', () => ({ value: 1000 }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('tool.call', () => ({ result: { listing: '' } }))
+  on('ui.open', () => {
+    seen.opened++
+    return { value: { isPlaced: true } }
+  })
+  on('tool.call', (_, e) => {
+    if (e.tool === 'Bash') {
+      const text = /lock acquire/.test(e.command) ? files['/test/acquire-answer'] ?? 'ACQUIRED' : 'RELEASED'
+      return { result: { stdout: text, stderr: '', interrupted: false }, text } as never
+    }
+    return { result: { listing: '' } } as never
+  })
+  return seen
 }
+
+const HELD = { '/repo/.claude/queue/.runner-session': 'me\n', '/repo/.claude/queue/.running': 'x\n' }
 
 const OPEN_PANE = {
   command: 'queue-panel',
@@ -192,10 +218,13 @@ const PANE_PROPS = {
   props: { title: 'Queue', isFocused: false, bodyColumns: 200, placement: 'inline' } as never,
 } as const
 
+const ACQUIRE = { tool: 'Bash', command: 'node "/plugin/scripts/queue.mjs" lock acquire' } as const
+
 test('the pane reads the queue from the project root, not the working directory', async ($, on) => {
   project(on, {
-    '/repo/claude-queue/queue.md': QUEUE,
-    '/repo/claude-queue/config.json': '{"max_workers": 6}',
+    ...HELD,
+    '/repo/.claude/queue/queue.md': QUEUE,
+    '/repo/.claude/queue/config.json': '{"max_workers": 6}',
   })
   await $.command.run(OPEN_PANE)
   const ui = await $.ui.mount(PANE_PROPS)
@@ -207,41 +236,98 @@ test('the pane reads the queue from the project root, not the working directory'
 
 test('a queue file that cannot be read is shown as stale, with its path', async ($, on) => {
   const files: Record<string, string> = {
-    '/repo/claude-queue/queue.md': QUEUE,
-    '/repo/claude-queue/config.json': '{}',
+    ...HELD,
+    '/repo/.claude/queue/queue.md': QUEUE,
+    '/repo/.claude/queue/config.json': '{}',
   }
   project(on, files)
   await $.command.run(OPEN_PANE)
-  delete files['/repo/claude-queue/queue.md']
+  delete files['/repo/.claude/queue/queue.md']
   await $.command.run(OPEN_PANE)
   const ui = await $.ui.mount(PANE_PROPS)
   expect(
-    await ui.find({ type: 'Text', text: /Not updating: queue file not found at \/repo\/claude-queue\/queue\.md/ }),
+    await ui.find({ type: 'Text', text: /Not updating: queue file not found at \/repo\/\.claude\/queue\/queue\.md/ }),
   ).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /\(stale\)/ })).toBeDefined()
   await ui.unmount()
 })
 
-test('a session started in a subfolder finds claude-queue/ in a parent, Windows paths too', async () => {
+test('a session that is not the coordinator opens no pane and starts no timer', async ($, on) => {
+  const seen = project(on, { '/repo/.claude/queue/config.json': '{}', '/repo/.claude/queue/queue.md': QUEUE })
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  const r = await $.command.run(OPEN_PANE)
+  expect(r.text).toMatch(/runs in the coordinator session/)
+  expect(seen.opened).toBe(0)
+  expect(seen.writes).toEqual([])
+})
+
+test('the pane opens and the session is renamed only after its own acquire succeeds', async ($, on) => {
+  const files: Record<string, string> = {
+    '/repo/.claude/queue/config.json': '{}',
+    '/repo/.claude/queue/queue.md': QUEUE,
+    '/test/acquire-answer': 'LOCKED',
+  }
+  const seen = project(on, files)
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+
+  await $.tool.call(ACQUIRE)
+  expect(seen.opened).toBe(0)
+  expect(seen.renamed).toEqual([])
+
+  files['/test/acquire-answer'] = 'ACQUIRED'
+  files['/repo/.claude/queue/.running'] = 'x\n'
+  await $.tool.call(ACQUIRE)
+  expect(files['/repo/.claude/queue/.runner-session']).toBe('me\n')
+  expect(seen.opened).toBeGreaterThan(0)
+  await seen.clock.advance(1000)
+  expect(seen.renamed.some(a => a.startsWith('Queue Coordinator '))).toBe(true)
+})
+
+test('the coordinator refreshes the lock every minute and stops when another session holds it', async ($, on) => {
+  const files: Record<string, string> = {
+    ...HELD,
+    '/repo/.claude/queue/config.json': '{}',
+    '/repo/.claude/queue/queue.md': QUEUE,
+  }
+  const seen = project(on, files)
+  const clock = seen.clock
+  await $.command.run(OPEN_PANE)
+  const before = seen.writes.filter(p => p.endsWith('/.running')).length
+  await clock.advance(61_000)
+  expect(seen.writes.filter(p => p.endsWith('/.running')).length).toBeGreaterThan(before)
+
+  files['/repo/.claude/queue/.runner-session'] = 'someone-else\n'
+  await clock.advance(61_000)
+  const after = seen.writes.filter(p => p.endsWith('/.running')).length
+  await clock.advance(61_000)
+  expect(seen.writes.filter(p => p.endsWith('/.running')).length).toBe(after)
+})
+
+test('a session started in a subfolder finds .claude/queue/ in a parent, Windows paths too', async () => {
   const seen: string[] = []
   const found = await findQueueDir('C:\\repo\\backend\\app', async p => {
     seen.push(p)
-    return p === 'C:\\repo\\claude-queue'
+    return p === 'C:\\repo\\.claude\\queue\\config.json'
   })
-  expect(found).toBe('C:\\repo\\claude-queue')
+  expect(found).toBe('C:\\repo\\.claude\\queue')
   expect(seen).toEqual([
-    'C:\\repo\\backend\\app\\claude-queue',
-    'C:\\repo\\backend\\claude-queue',
-    'C:\\repo\\claude-queue',
+    'C:\\repo\\backend\\app\\.claude\\queue\\config.json',
+    'C:\\repo\\backend\\.claude\\queue\\config.json',
+    'C:\\repo\\.claude\\queue\\config.json',
   ])
 })
 
-test('no claude-queue/ anywhere up the tree finds nothing', async () => {
+test('no .claude/queue/ anywhere up the tree finds nothing', async () => {
   const seen: string[] = []
   const found = await findQueueDir('/home/me/repo', async p => {
     seen.push(p)
     return false
   })
   expect(found).toBeUndefined()
-  expect(seen).toEqual(['/home/me/repo/claude-queue', '/home/me/claude-queue', '/home/claude-queue', '/claude-queue'])
+  expect(seen).toEqual([
+    '/home/me/repo/.claude/queue/config.json',
+    '/home/me/.claude/queue/config.json',
+    '/home/.claude/queue/config.json',
+    '/.claude/queue/config.json',
+  ])
 })

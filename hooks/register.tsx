@@ -1,15 +1,19 @@
-import type { AgentInfo, EngineInterface, Register, ToolCallInput } from 'claude-code'
+import type { AgentInfo, EngineInterface, Register, Timer, ToolCallInput } from 'claude-code'
 
 import type { PeerSession, QueueTask, ToolSeen } from '../types'
 
-// Live pane for the session that runs /queue-start. Reads claude-queue/queue.md and
-// config.json every few seconds, lists this session's background agents (the workers),
+// Live pane for the coordinator session. It wakes only when this session's own
+// `queue.mjs lock acquire` succeeds (or, after a restart or reload, when the lock's marker
+// names this session), then reads .claude/queue/queue.md and config.json every few seconds,
+// refreshes the lock every minute, lists this session's background agents (the workers),
 // remembers each worker's last tool call, and lists the user's other sessions as ListAgents
-// shows them.
+// shows them. In every other session it does nothing but register /queue-panel.
 
 const PANE = 'queue'
-const DIR = 'claude-queue'
+const DIR = ['.claude', 'queue']
 const ENDED = ['completed', 'failed', 'killed']
+const TICK_MS = 3000
+const LOCK_EVERY = 20 // ticks: the lock is refreshed every minute
 
 const isActive = { plugin: 'task-queue', key: 'isActive' } as const
 const tasks = { plugin: 'task-queue', key: 'tasks' } as const
@@ -21,9 +25,10 @@ const nickname = { plugin: 'task-queue', key: 'nickname' } as const
 const sessions = { plugin: 'task-queue', key: 'sessions' } as const
 const queueError = { plugin: 'task-queue', key: 'queueError' } as const
 
-// ListAgents is asked every SESSION_EVERY refreshes (3 s each), not every refresh.
+// ListAgents is asked every SESSION_EVERY refreshes, not every refresh.
 const SESSION_EVERY = 5
 let ticks = 0
+let timer: Timer | undefined
 
 // The rows the last drawing needed, and the rows last asked of the pane. The timer asks
 // the pane for a new height when they differ, so the inline pane grows and shrinks with
@@ -36,6 +41,9 @@ const NICKNAMES = [
   'Otter', 'Falcon', 'Maple', 'Comet', 'Badger', 'Juniper', 'Pebble', 'Heron', 'Cobalt',
   'Lynx', 'Saffron', 'Quartz', 'Willow', 'Kestrel', 'Ember', 'Fjord', 'Marten', 'Basil',
 ]
+
+// `node ".../queue.mjs" lock acquire` (or release), as the skills run it.
+const LOCK_CALL = /queue\.mjs["']?\s+lock\s+(acquire|release)\b/
 
 export function parseQueue(text: string): QueueTask[] {
   const found: QueueTask[] = []
@@ -95,7 +103,7 @@ function parentPath(dir: string): string | undefined {
   return /^[A-Za-z]:$/.test(up) ? up + '\\' : up
 }
 
-// The claude-queue/ folder, found from the session's project root, never from the current
+// The .claude/queue/ folder, found from the session's project root, never from the current
 // working directory: a shell `cd` moves the session's cwd, and relative reads then miss. A
 // session started in a subfolder of the repository finds it in the nearest parent that has
 // one. Undefined when no folder up to the file system's root has one.
@@ -105,8 +113,8 @@ export async function findQueueDir(
 ): Promise<string | undefined> {
   let dir: string | undefined = root
   while (dir !== undefined) {
-    const candidate = joinPath(dir, DIR)
-    if (await exists(candidate)) return candidate
+    const candidate = joinPath(dir, ...DIR)
+    if (await exists(joinPath(candidate, 'config.json'))) return candidate
     const up = parentPath(dir)
     dir = up === dir ? undefined : up
   }
@@ -115,8 +123,18 @@ export async function findQueueDir(
 
 async function queueFile($: EngineInterface, name: string): Promise<string> {
   const root = await $.session.root()
-  const dir = (await findQueueDir(root, p => $.fs.exists(p))) ?? joinPath(root, DIR)
+  const dir = (await findQueueDir(root, p => $.fs.exists(p))) ?? joinPath(root, ...DIR)
   return joinPath(dir, name)
+}
+
+// Whether the lock's marker names this session.
+async function holdsLock($: EngineInterface): Promise<boolean> {
+  try {
+    const marker = (await $.fs.read(await queueFile($, '.runner-session'))).trim()
+    return marker !== '' && marker === (await $.session.id()) && (await $.fs.exists(await queueFile($, '.running')))
+  } catch {
+    return false
+  }
 }
 
 async function refresh($: EngineInterface): Promise<void> {
@@ -146,14 +164,26 @@ async function refresh($: EngineInterface): Promise<void> {
   for (const a of agents) if (seen[a.id] === undefined) seen[a.id] = t
   await $.state.set(firstSeen, seen)
   await $.state.set(now, t)
+  if (ticks % LOCK_EVERY === 0) await refreshLock($)
   if (ticks++ % SESSION_EVERY === 0) await refreshSessions($, agents)
   await fitHeight($)
+}
+
+// Keeps the lock fresh while this session holds it. If the marker names another session, a
+// new coordinator took over (this one's lock went stale): stop.
+async function refreshLock($: EngineInterface): Promise<void> {
+  if (!(await holdsLock($))) {
+    deactivate()
+    await $.state.set(isActive, false)
+    return
+  }
+  await $.fs.write(await queueFile($, '.running'), new Date(await $.clock.now()).toISOString() + '\n')
 }
 
 // Other sessions, from the ListAgents tool: every row except this session's own agents,
 // which the pane shows as workers.
 // Reads the text listing ListAgents prints, one line per session under a "<Kind> (<n>):"
-// header:  "  MAIN CHAT [c315e2]  \u00b7  interactive  \u00b7  idle  \u00b7  started 6h ago".
+// header:  "  MAIN CHAT [c315e2]  ·  interactive  ·  idle  ·  started 6h ago".
 // The structured sections can hold fewer rows than the listing, so they are only a fallback.
 export function parseListing(text: string): PeerSession[] {
   const found: PeerSession[] = []
@@ -166,7 +196,7 @@ export function parseListing(text: string): PeerSession[] {
     }
     const row = /^\s+(.+?)\s+\[[0-9a-z]+\]\s*(.*)$/i.exec(line)
     if (!row || kind === '') continue
-    const fields = (row[2] ?? '').split('\u00b7').map(f => f.trim()).filter(f => f !== '')
+    const fields = (row[2] ?? '').split('·').map(f => f.trim()).filter(f => f !== '')
     found.push({ name: row[1] ?? '', status: fields[1] ?? fields[0] ?? '', kind })
   }
   return found
@@ -200,9 +230,8 @@ async function refreshSessions($: EngineInterface, agents: AgentInfo[]): Promise
   }
 }
 
-// Names the session "Queue Coordinator <nickname>" with the built-in /rename, once the
-// session is idle. The nickname is kept for the session, so a second /queue-coordinator
-// keeps the same name.
+// Names the session "Queue Coordinator <nickname>" with the built-in /rename. The nickname is
+// kept for the session, so a second start keeps the same name.
 async function rename($: EngineInterface): Promise<void> {
   let name = (await $.state.get(nickname)).value
   if (name === undefined) {
@@ -223,27 +252,30 @@ async function recordTool($: EngineInterface, agentId: string, text: string): Pr
   await $.state.set(lastTool, { ...all, [agentId]: seen })
 }
 
+function deactivate(): void {
+  timer?.cancel()
+  timer = undefined
+}
+
 async function activate($: EngineInterface): Promise<void> {
   await $.state.set(isActive, true)
+  ticks = 0
   await refresh($)
+  if (timer === undefined) timer = $.clock.every(TICK_MS, () => void refresh($).catch(() => {}))
   askedRows = Math.max(MIN_ROWS, wantedRows)
   void $.ui.open({ id: PANE, title: 'Queue', rows: askedRows })
 }
 
-// The coordinator can start without a typed /queue-start (for example /queue-init starts it
-// through the Skill tool). `lock acquire` then writes this session's id into the marker, and
-// the next tick opens the pane and names the session.
-async function wakeIfCoordinator($: EngineInterface): Promise<void> {
-  if ((await $.state.get(isActive)).value === true) return
-  let marker = ''
-  try {
-    marker = (await $.fs.read(await queueFile($, '.runner-session'))).trim()
-  } catch {
-    return
-  }
-  if (marker === '' || marker !== (await $.session.id())) return
+// This session's own `lock acquire` succeeded: it is the coordinator. The marker is written
+// here too, for builds that do not pass CLAUDE_CODE_SESSION_ID to commands.
+async function becameCoordinator($: EngineInterface): Promise<void> {
+  const marker = await queueFile($, '.runner-session')
+  const id = await $.session.id()
+  const current = await $.fs.read(marker).catch(() => '')
+  if (current.trim() !== id) await $.fs.write(marker, id + '\n')
   await activate($)
-  await rename($)
+  // Renamed once the tool call has finished, not from inside it.
+  $.clock.after(1000, () => void rename($).catch(() => {}))
 }
 
 async function fitHeight($: EngineInterface): Promise<void> {
@@ -261,37 +293,44 @@ function minutes(ms: number): string {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'queue-panel', description: 'Show the queue coordinator pane' })
-    $.clock.every(3000, () => void wakeIfCoordinator($).then(() => refresh($)).catch(() => {}))
-    try {
-      const marker = (await $.fs.read(await queueFile($, '.runner-session'))).trim()
-      if (marker !== '' && marker === (await $.session.id())) await activate($)
-    } catch {
-      // No coordinator marker: stay quiet until /queue-start, /queue-coordinator or /queue-panel.
+    // A restarted or reloaded coordinator session still holds the lock: carry on.
+    if (await holdsLock($)) {
+      await $.state.set(isActive, false)
+      await activate($)
+    } else {
+      deactivate()
+      await $.state.set(isActive, false)
     }
     return next(e)
   })
 
   on('command.run', { command: 'queue-panel' }, async $ => {
-    await activate($)
-    return { text: 'Queue pane opened.' }
-  })
-
-  on('prompt.submit', ($, e, next) => {
-    // The skills load as /task-queue:queue-start, or as /queue-start where no other command
-    // has that name.
-    const name = e.command?.name.split(':').pop()
-    if (name === 'queue-coordinator' || name === 'queue-start') {
-      void activate($).catch(() => {})
-      $.clock.after(1000, () => void rename($).catch(() => {}))
+    if ((await $.state.get(isActive)).value === true || (await holdsLock($))) {
+      await activate($)
+      return { text: 'Queue pane opened.' }
     }
-    return next(e)
+    return { text: 'The queue pane runs in the coordinator session. /queue-start makes this session the coordinator.' }
   })
 
-  on('tool.call', ($, e, next) => {
-    // Fire and forget: the pane's bookkeeping never holds up or fails a tool call.
-    if (e.agentId !== undefined) void recordTool($, e.agentId, describeCall(e)).catch(() => {})
-    return next(e)
-  })
+  on('tool.call', async ($, e, next) => {
+    // The bookkeeping never holds up or fails a tool call.
+    if (e.agentId !== undefined) {
+      void recordTool($, e.agentId, describeCall(e)).catch(() => {})
+      return next(e)
+    }
+    const command = e.tool === 'Bash' || e.tool === 'PowerShell' ? e.command : ''
+    const lockCall = LOCK_CALL.exec(command)
+    if (!lockCall) return next(e)
+    const r = await next(e)
+    const text = 'text' in r && typeof r.text === 'string' ? r.text : ''
+    if (lockCall[1] === 'acquire' && /\bACQUIRED\b/.test(text)) {
+      await becameCoordinator($).catch(() => {})
+    } else if (lockCall[1] === 'release' && /\bRELEASED\b/.test(text)) {
+      deactivate()
+      void $.state.set(isActive, false).catch(() => {})
+    }
+    return r
+  }).catch(($, e, next) => next(e))
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)

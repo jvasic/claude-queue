@@ -3,7 +3,11 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const QUEUE_DIR = 'claude-queue'
+// Queue state lives in .claude/queue/, worktrees in .claude/worktrees/. Both are kept out of
+// git through .git/info/exclude, never through a tracked file. claude-queue/ is where 0.1
+// kept the state; init moves it.
+export const QUEUE_DIR = path.join('.claude', 'queue')
+export const LEGACY_QUEUE_DIR = 'claude-queue'
 export const WORKTREE_DIR = path.join('.claude', 'worktrees')
 
 export class QueueError extends Error {}
@@ -61,6 +65,29 @@ export function mainRootFast(cwd) {
 
 export function queueDir(root) {
   return path.join(root, QUEUE_DIR)
+}
+
+export function legacyQueueDir(root) {
+  return path.join(root, LEGACY_QUEUE_DIR)
+}
+
+// .git/info/exclude of the main repository: local ignore rules, never committed.
+export function excludeFile(root) {
+  return path.join(root, '.git', 'info', 'exclude')
+}
+
+// Whether git ignores the path (relative to root) by any of its rules: .gitignore files,
+// .git/info/exclude, core.excludesFile. A tracked path is never ignored.
+export function isIgnored(root, rel) {
+  return git(['check-ignore', '-q', '--', toPosix(rel)], root).code === 0
+}
+
+// Whether the path is inside dir (or is dir), comparing resolved paths, case-insensitively
+// on Windows and macOS.
+export function isInside(child, dir) {
+  const fold = s => (process.platform === 'linux' ? s : s.toLowerCase())
+  const rel = path.relative(fold(path.resolve(dir)), fold(path.resolve(child)))
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
 }
 
 export function currentBranch(cwd) {

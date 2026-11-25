@@ -1,6 +1,6 @@
 ---
 name: queue-close
-description: Close the queue coordinator safely. Stops starting workers, has each running worker commit its work as a WIP commit and report what is done and what remains, records unfinished tasks as [paused] in claude-queue/queue.md, updates the notes and log, and releases the lock. Use when the user types /queue-close.
+description: Close the queue coordinator safely. Stops starting workers, has each running worker commit its work as a WIP commit and report what is done and what remains, records unfinished tasks as [paused] in .claude/queue/queue.md, updates the notes and log, and releases the lock. Use when the user types /queue-close.
 ---
 
 Used in the coordinator session, before the user closes it. `Q` means
@@ -37,6 +37,7 @@ line and do nothing else. If another session holds the lock, tell the user to ru
 6. **Tell the user** it is safe to close, in one line: how many tasks are paused and that
    `/queue-start` resumes them.
 
-Edit `queue.md` and `log.md` with the Edit tool only, never from the shell (`sed`, heredocs,
+Release the lock only with `Q lock release`, so the pane stops with it. Edit `queue.md` and
+`log.md` with the Edit tool only, never from the shell (`sed`, heredocs,
 `cat >>`): text with backslashes, such as a Windows path, comes out mangled. Never push, never
 `git stash`, never remove a worktree or branch of a paused task.

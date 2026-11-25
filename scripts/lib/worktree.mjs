@@ -1,15 +1,20 @@
 // Task and merge worktrees under .claude/worktrees/.
 //   task:  .claude/worktrees/queue-<slug>, on branch <branch_prefix><slug>
 //   merge: .claude/worktrees/merge-<slug>, made by the queue-merge skill with git worktree add
-// create links each worktree_links entry from the main tree: a folder as a junction (Windows)
-// or symlink, a file as a copy. remove unlinks those links first, refuses to delete anything
-// while any link is left inside the worktree, and so never deletes through a link into the
-// main tree. The branch is always kept.
+//
+// create refuses a branch that already exists unless --resume says the task owns it (its
+// "> branch:" line in queue.md names it), records the commit the task starts from in
+// .claude/queue/tasks/<slug>.json (check diffs against it), links each worktree_links entry
+// that git ignores (a folder as a junction on Windows or a symlink elsewhere, a file as a
+// copy), and installs the commit guard. remove unlinks those links first, refuses to delete
+// anything while any link is left inside the worktree, and so never deletes through a link
+// into the main tree. The branch is always kept.
 import fs from 'node:fs'
 import path from 'node:path'
 
 import { loadConfig } from './config.mjs'
-import { QueueError, WORKTREE_DIR, exists, git } from './repo.mjs'
+import { readQueue } from './queuefile.mjs'
+import { QueueError, WORKTREE_DIR, exists, git, isIgnored, queueDir, toPosix } from './repo.mjs'
 
 const SLUG = /^[a-z0-9][a-z0-9-]{0,59}$/
 
@@ -64,14 +69,23 @@ function safeRel(rel) {
   return norm
 }
 
-// Links the configured entries into an existing worktree. Returns the lines to print.
+// Links the configured entries into an existing worktree. Only what git ignores is linked or
+// copied: a tracked or unignored file (a .env someone forgot to ignore) could otherwise be
+// committed from the worktree. Returns the lines to print and the paths linked.
 export function linkInto(root, wt, links) {
   const out = []
+  const linked = []
   for (const raw of links) {
     const rel = safeRel(raw)
     const src = path.join(root, rel)
     const dst = path.join(wt, rel)
-    if (!exists(src) || exists(dst)) continue
+    if (!exists(src)) continue
+    if (!isIgnored(root, rel)) {
+      out.push(`not linked: ${raw} (git does not ignore it, so a worker could commit it; ignore it first)`)
+      continue
+    }
+    linked.push(toPosix(rel))
+    if (exists(dst)) continue
     fs.mkdirSync(path.dirname(dst), { recursive: true })
     if (fs.statSync(src).isDirectory()) {
       fs.symlinkSync(src, dst, process.platform === 'win32' ? 'junction' : 'dir')
@@ -81,21 +95,152 @@ export function linkInto(root, wt, links) {
       out.push(`copied ${raw}`)
     }
   }
-  return out
+  return { lines: out, linked }
 }
 
-export function create(root, slug, { base } = {}) {
+// ---- The commit guard ----------------------------------------------------------------------
+// Each task worktree gets its own core.hooksPath (a per-worktree setting, which needs
+// extensions.worktreeConfig) pointing at .claude/queue/git-hooks/. Its pre-commit refuses
+// .env files and anything linked from the main tree; every hook then runs the repository's
+// own hook of the same name, so a repo's hooks (husky and the like) still run.
+
+const HOOK_NAMES = [
+  'applypatch-msg', 'pre-applypatch', 'post-applypatch', 'pre-commit', 'pre-merge-commit',
+  'prepare-commit-msg', 'commit-msg', 'post-commit', 'pre-rebase', 'post-checkout', 'post-merge',
+  'pre-push', 'post-rewrite', 'reference-transaction', 'push-to-checkout', 'pre-auto-gc',
+]
+
+const CHAIN = `orig=$(git config --get queue.originalhooks)
+[ -n "$orig" ] || orig="$(git rev-parse --git-common-dir)/hooks"
+hook="$orig/$(basename "$0")"
+if [ -f "$hook" ] && [ -x "$hook" ]; then exec "$hook" "$@"; fi
+exit 0
+`
+
+const GUARD = `links=$(git config --get-all queue.link)
+bad=$(git diff --cached --name-only --diff-filter=ACMRT -z | tr '\\0' '\\n' | while IFS= read -r f; do
+  name=\${f##*/}
+  case "$name" in
+    .env.example|.env.sample|.env.template|.env.dist) ;;
+    .env|.env.*) printf '%s\\n' "$f"; continue ;;
+  esac
+  printf '%s\\n' "$links" | while IFS= read -r l; do
+    [ -n "$l" ] || continue
+    case "$f" in "$l"|"$l"/*) printf '%s\\n' "$f" ;; esac
+  done
+done)
+if [ -n "$bad" ]; then
+  echo "task-queue: refused to commit .env files or files linked from the main tree:" >&2
+  printf '%s\\n' "$bad" | sed 's/^/  /' >&2
+  echo "Unstage them (git restore --staged <path>) and stage only the files you changed." >&2
+  exit 1
+fi
+`
+
+function hookScript(name) {
+  const head = '#!/bin/sh\n# Written by the task-queue plugin for its task worktrees. Do not edit.\n'
+  return head + (name === 'pre-commit' ? GUARD : '') + CHAIN
+}
+
+export function hooksDir(root) {
+  return path.join(queueDir(root), 'git-hooks')
+}
+
+function writeHooks(root) {
+  const dir = hooksDir(root)
+  fs.mkdirSync(dir, { recursive: true })
+  for (const name of HOOK_NAMES) {
+    const p = path.join(dir, name)
+    const text = hookScript(name)
+    if (!exists(p) || fs.readFileSync(p, 'utf8') !== text) fs.writeFileSync(p, text)
+    try {
+      fs.chmodSync(p, 0o755)
+    } catch {}
+  }
+}
+
+// Returns a line saying what was set up, or why not.
+export function installGuard(root, wt, linked) {
+  if (git(['config', '--get', 'core.worktree'], root).out !== '') {
+    return 'no commit guard: core.worktree is set in this repository'
+  }
+  // The repository's own hooks folder, read before this worktree gets its own setting.
+  const original = git(['config', '--get', 'core.hooksPath'], root).out
+  if (git(['config', '--get', 'extensions.worktreeConfig'], root).out !== 'true') {
+    const r = git(['config', 'extensions.worktreeConfig', 'true'], root)
+    if (r.code !== 0) return `no commit guard: could not turn on extensions.worktreeConfig: ${r.err}`
+  }
+  writeHooks(root)
+  const set = (...args) => git(['config', '--worktree', ...args], wt)
+  set('core.hooksPath', toPosix(hooksDir(root)))
+  if (original !== '') set('queue.originalhooks', original)
+  set('--unset-all', 'queue.link')
+  for (const l of linked) set('--add', 'queue.link', l)
+  return 'commit guard on: .env files and linked paths cannot be committed'
+}
+
+// ---- Task base records ---------------------------------------------------------------------
+
+export function recordPath(root, slug) {
+  return path.join(queueDir(root), 'tasks', `${slug}.json`)
+}
+
+export function readRecord(root, slug) {
+  try {
+    return JSON.parse(fs.readFileSync(recordPath(root, slug), 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+function writeRecord(root, slug, record) {
+  fs.mkdirSync(path.dirname(recordPath(root, slug)), { recursive: true })
+  fs.writeFileSync(recordPath(root, slug), JSON.stringify(record, null, 2) + '\n')
+}
+
+// The slug of a task worktree from its path, or null for any other folder.
+export function slugOf(root, wt) {
+  const rel = path.relative(path.join(root, WORKTREE_DIR), path.resolve(wt))
+  const m = /^queue-([a-z0-9][a-z0-9-]*)$/.exec(rel)
+  return m ? m[1] : null
+}
+
+// ---- Commands ------------------------------------------------------------------------------
+
+export function create(root, slug, { base, resume = false } = {}) {
   const cfg = loadConfig(root)
   const wt = worktreePath(root, slug, 'task')
-  if (exists(wt)) return { lines: [`EXISTS ${wt}`], code: 0 }
   const branch = `${cfg.branch_prefix}${slug}`
   const has = git(['branch', '--list', branch], root).out !== ''
-  const r = has
-    ? git(['worktree', 'add', wt, branch], root)
-    : git(['worktree', 'add', '-b', branch, wt, base || cfg.base_branch], root)
-  if (r.code !== 0) return { lines: [`FAILED git worktree add: ${r.err || r.out}`], code: 1 }
-  const lines = linkInto(root, wt, cfg.worktree_links)
-  lines.push(`CREATED ${wt} on ${branch}`)
+  if (has && !resume) {
+    return {
+      lines: [`FAILED branch ${branch} already exists. A new task needs a title that differs from earlier ones; pass --resume only to continue this task's own branch.`],
+      code: 1,
+    }
+  }
+  if (has && !readQueue(root).some(t => (t.notes.branch ?? []).includes(branch))) {
+    return { lines: [`FAILED --resume: no task in queue.md has "> branch: ${branch}", so the branch is not this task's`], code: 1 }
+  }
+  const lines = []
+  if (exists(wt)) lines.push(`EXISTS ${wt}`)
+  else {
+    const r = has
+      ? git(['worktree', 'add', wt, branch], root)
+      : git(['worktree', 'add', '-b', branch, wt, base || cfg.base_branch], root)
+    if (r.code !== 0) return { lines: [`FAILED git worktree add: ${r.err || r.out}`], code: 1 }
+  }
+
+  let record = readRecord(root, slug)
+  if (!has || record?.branch !== branch) {
+    const from = has ? git(['merge-base', base || cfg.base_branch, branch], root) : git(['rev-parse', 'HEAD'], wt)
+    record = { branch, base: from.out, base_ref: base || cfg.base_branch, created: new Date().toISOString() }
+    writeRecord(root, slug, record)
+  }
+  const linked = linkInto(root, wt, cfg.worktree_links)
+  lines.push(...linked.lines)
+  lines.push(installGuard(root, wt, linked.linked))
+  lines.push(`BASE ${record.base} (${record.base_ref})`)
+  lines.push(`${has ? 'RESUMED' : 'CREATED'} ${wt} on ${branch}`)
   return { lines, code: 0 }
 }
 
@@ -103,7 +248,7 @@ export function link(root, slug, kind) {
   const cfg = loadConfig(root)
   const wt = worktreePath(root, slug, kind)
   if (!exists(wt)) return { lines: [`FAILED no worktree at ${wt}`], code: 1 }
-  const lines = linkInto(root, wt, cfg.worktree_links)
+  const { lines } = linkInto(root, wt, cfg.worktree_links)
   lines.push(`LINKED ${wt}`)
   return { lines, code: 0 }
 }

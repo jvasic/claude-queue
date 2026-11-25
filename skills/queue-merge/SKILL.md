@@ -9,10 +9,10 @@ working tree). The file formats are in `${CLAUDE_PLUGIN_ROOT}/docs/queue-format.
 
 The first argument is the target branch. Without one, ask for it. Further arguments are the
 queue branches to merge; without them, every branch starting with `branch_prefix` (from
-`claude-queue/config.json`) is merged. A target that does not exist yet is created from
-`base_branch`. `claude-queue/` is git-ignored and lives in the main tree only: read and write
+`.claude/queue/config.json`) is merged. A target that does not exist yet is created from
+`base_branch`. `.claude/queue/` is git-ignored and lives in the main tree only: read and write
 its files there, whichever tree the merge runs in. Follow the repo notes in `config.json` and
-`CLAUDE.md`.
+the repo's `CLAUDE.md` and `AGENTS.md`.
 
 1. **Where to work.**
    - If the target is the branch checked out in the main tree, work in the main tree, but only
@@ -32,7 +32,7 @@ its files there, whichever tree the merge runs in. Follow the repo notes in `con
    coordinator holding it, or you are a merge agent it started. If another session holds it,
    stop.
 3. **List.** The named branches, or else `git branch --list "<branch_prefix>*"`. Drop any
-   branch already listed in `claude-queue/merged.md` and say so. A named branch that does not
+   branch already listed in `.claude/queue/merged.md` and say so. A named branch that does not
    exist is an error: stop. If nothing is left, say so and stop.
 4. **Review.** For each branch show `git log --oneline <target>..<branch>` and
    `git diff --stat <target>...<branch>`, and read the matching `log.md` entry. Print a one
@@ -61,12 +61,15 @@ its files there, whichever tree the merge runs in. Follow the repo notes in `con
      `git checkout -- . && git reset` to discard that branch's changes). Branches committed
      before it stay committed.
 6. **Full suite, once per round.** After the last branch, if any branch was committed:
-   `Q check --worktree <this tree> --full`. If it fails and the cause is plainly an
+   `Q check --worktree <this tree> --full`. It runs in the background and writes a log under
+   `.claude/queue/runs/`; the command waits up to 8 minutes. If it prints `RUNNING <id>`
+   (exit code 3), run `Q check --wait <id>` again, as often as needed, until it prints a
+   `RESULT` line. Never rerun `--full` to wait. If it fails and the cause is plainly an
    interaction between merged branches, fix it as a merge agent and commit
    `Fix after merging <branches>`; otherwise report the failing lines. Never revert committed
    branches on your own.
 7. **Record and clean up.** For each branch committed in step 5: append it to
-   `claude-queue/merged.md` (date, branch, target, its original commit hashes, the new commit
+   `.claude/queue/merged.md` (date, branch, target, its original commit hashes, the new commit
    hash), then delete it with `git branch -D <branch>` (force is required because the
    cherry-picked commits are not the branch's own). Skip deletion for any branch that still
    has a worktree in `git worktree list`; report it instead. Never record or delete a branch

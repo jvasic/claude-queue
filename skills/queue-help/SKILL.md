@@ -7,7 +7,7 @@ Print the text below as it is, then stop. Use no tools and change nothing.
 
 ```
 THE QUEUE
-A coordinator session keeps a list of tasks (claude-queue/queue.md) and runs background
+A coordinator session keeps a list of tasks (.claude/queue/queue.md) and runs background
 workers on them, each on its own branch and worktree. You describe work; it gets done and
 waits for you.
 
@@ -29,7 +29,9 @@ The full command names carry the plugin's prefix (/task-queue:queue-start); the 
 names work when no other command uses them.
 
 RULES      Nothing is pushed unless you say so.
-           Workers use their own branches and worktrees, never your main working tree.
+           Workers use their own branches and worktrees, never your main working tree; a
+           hook holds them to it (a task you mark free is exempt).
+           The queue lives in .claude/queue/, out of git; no tracked file is changed.
            A refused permission stops the work and comes to you; nothing works around it.
            Close the session with /queue-close, not by just closing it.
 ```

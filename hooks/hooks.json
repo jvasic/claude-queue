@@ -1,19 +1,52 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/.claude/queue/config.json\" ]; then cat \"${CLAUDE_PLUGIN_ROOT}/templates/session-note.md\"; elif [ -f \"$CLAUDE_PROJECT_DIR/claude-queue/config.json\" ]; then cat \"${CLAUDE_PLUGIN_ROOT}/templates/session-note-legacy.md\"; fi; exit 0"
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs\" hook prompt-submit", "timeout": 10 }
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "[ -f \"$CLAUDE_PROJECT_DIR/.claude/queue/.runner-session\" ] && node \"${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs\" hook prompt-submit; exit 0"
+          }
         ]
       }
     ],
     "SessionEnd": [
       {
         "hooks": [
-          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs\" hook session-end", "timeout": 10 }
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "[ -f \"$CLAUDE_PROJECT_DIR/.claude/queue/.runner-session\" ] && node \"${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs\" hook session-end; exit 0"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "[ -f \"$CLAUDE_PROJECT_DIR/.claude/queue/config.json\" ] || exit 0; input=$(cat); case \"$input\" in *'\"agent_id\"'*) printf '%s' \"$input\" | node \"${CLAUDE_PLUGIN_ROOT}/scripts/queue.mjs\" hook pre-tool-use ;; esac; exit 0"
+          }
         ]
       }
     ]
   },
-  "modules": ["./register.tsx"]
+  "modules": [
+    "./register.tsx"
+  ]
 }

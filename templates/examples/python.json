@@ -1,14 +1,35 @@
 {
-  "_comment": "Example for a Python repo with a .venv at the root, ruff and pytest.",
-  "worktree_links": [".venv", ".env"],
+  "_comment": "Example for a Python repo with a .venv at the root, ruff and pytest. check_env puts the worktree first on PYTHONPATH, so a package installed in editable mode is tested from the worktree; /queue-init adds an import check with the package name.",
+  "worktree_links": [
+    ".venv",
+    ".env"
+  ],
   "venv": ".venv",
+  "check_env": {
+    "PYTHONPATH": "{worktree}"
+  },
   "checks": {
     "changed": [
-      { "name": "ruff", "when": ["*.py"], "run": "ruff check {files}" },
-      { "name": "pytest", "when": ["*.py"], "run": "python -m pytest -q {tests}" }
+      {
+        "name": "ruff",
+        "when": [
+          "*.py"
+        ],
+        "run": "ruff check {files}"
+      },
+      {
+        "name": "pytest",
+        "when": [
+          "*.py"
+        ],
+        "run": "python -m pytest -q {tests}"
+      }
     ],
     "full": [
-      { "name": "pytest", "run": "python -m pytest -q" }
+      {
+        "name": "pytest",
+        "run": "python -m pytest -q"
+      }
     ]
   }
 }

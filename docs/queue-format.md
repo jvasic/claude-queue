@@ -1,7 +1,9 @@
 # The queue files
 
-All queue state lives in `claude-queue/` at the root of the main working tree. `/queue-init`
-creates it and git-ignores it, so worktrees never carry a copy and merges never see it.
+All queue state lives in `.claude/queue/` at the root of the main working tree; the task
+worktrees live in `.claude/worktrees/`. `/queue-init` creates the first and keeps both out of
+git through `.git/info/exclude`, a local file that is never committed, so worktrees never
+carry a copy, merges never see it, and no tracked file changes.
 
 | File | Purpose |
 | --- | --- |
@@ -10,6 +12,10 @@ creates it and git-ignores it, so worktrees never carry a copy and merges never 
 | `log.md` | One entry per finished task, written by the coordinator. |
 | `merged.md` | Branches already applied by `/queue-merge`. |
 | `images/` | Images referenced by tasks (optional). |
+| `research/` | Notes and reports workers write to outlive their worktree, one folder per slug. |
+| `tasks/<slug>.json` | The commit each task started from. Checks measure changes from it. |
+| `runs/` | Logs of background full-suite runs. |
+| `git-hooks/` | The commit guard the task worktrees use. |
 | `.running` | The coordinator lock. Never edit. |
 | `.runner-session` | The coordinator's session id, for the SessionEnd hook. Never edit. |
 
@@ -43,11 +49,12 @@ records the result. Edit the file by hand only when no coordinator runs.
   | `> agent: <id>` | The background agent holding the task. |
   | `> question: <text>` / `> answer: <text>` | A worker's question and its answer. An answer the coordinator gave itself ends with `(coordinator)`. |
   | `> merging: batch/<name>` | A merge agent is applying this branch now. |
-  | `> merged: batch/<name>` | Applied to that branch. |
+  | `> merged: batch/<name> at <commit>` | Applied to that branch as that commit. A task that depends on it builds on the batch. |
+  | `> free: <what the user allowed>` | The safety hook does not hold this task's worker (a release that pushes, a cleanup in the main tree). |
   | `> worktree:`, `> done:`, `> remains:` | On a `[paused]` task: where its worktree is, what is finished, what is left. |
 
 - `Also: <text>` lines in a prompt are work added later to a running task.
-- Images: paste them into the coordinator chat, or drop them in `claude-queue/images/` and
+- Images: paste them into the coordinator chat, or drop them in `.claude/queue/images/` and
   name them in the task. Workers read every referenced image before starting.
 
 Example:
@@ -97,3 +104,7 @@ One line per applied branch:
 A task's slug comes from its title: lowercase, letters and digits, spaces to dashes, at most
 40 characters (`Billing page totals` gives `billing-page-totals`). Its branch is
 `<branch_prefix><slug>`, its worktree `.claude/worktrees/queue-<slug>`.
+
+Slugs are never numbered. A new task whose slug another task or branch already has gets a
+more specific title instead, and `worktree create` refuses an existing branch unless the
+worker resumes the task that owns it (`--resume`, checked against the `> branch:` lines).
