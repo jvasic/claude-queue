@@ -22,6 +22,8 @@ declare module 'claude-code' {
       now: number
       nickname: string
       sessions: PeerSession[]
+      /** Why the last read of queue.md failed; '' when it succeeded. */
+      queueError: string
     }
   }
 }

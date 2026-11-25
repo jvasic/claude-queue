@@ -8,9 +8,7 @@ import type { PeerSession, QueueTask, ToolSeen } from '../types'
 // shows them.
 
 const PANE = 'queue'
-const QUEUE = 'claude-queue/queue.md'
-const CONFIG = 'claude-queue/config.json'
-const MARKER = 'claude-queue/.runner-session'
+const DIR = 'claude-queue'
 const ENDED = ['completed', 'failed', 'killed']
 
 const isActive = { plugin: 'task-queue', key: 'isActive' } as const
@@ -21,6 +19,7 @@ const firstSeen = { plugin: 'task-queue', key: 'firstSeen' } as const
 const now = { plugin: 'task-queue', key: 'now' } as const
 const nickname = { plugin: 'task-queue', key: 'nickname' } as const
 const sessions = { plugin: 'task-queue', key: 'sessions' } as const
+const queueError = { plugin: 'task-queue', key: 'queueError' } as const
 
 // ListAgents is asked every SESSION_EVERY refreshes (3 s each), not every refresh.
 const SESSION_EVERY = 5
@@ -81,16 +80,62 @@ function describeCall(e: ToolCallInput): string {
   return e.tool
 }
 
+// Paths are built here, as the module has no Node `path`. The separator follows the root's.
+function joinPath(dir: string, ...parts: string[]): string {
+  const sep = dir.includes('\\') && !dir.includes('/') ? '\\' : '/'
+  return [dir.replace(/[\\/]+$/, ''), ...parts].join(sep)
+}
+
+function parentPath(dir: string): string | undefined {
+  const trimmed = dir.replace(/[\\/]+$/, '')
+  const i = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  if (i < 0) return undefined
+  const up = trimmed.slice(0, i)
+  if (up === '') return '/'
+  return /^[A-Za-z]:$/.test(up) ? up + '\\' : up
+}
+
+// The claude-queue/ folder, found from the session's project root, never from the current
+// working directory: a shell `cd` moves the session's cwd, and relative reads then miss. A
+// session started in a subfolder of the repository finds it in the nearest parent that has
+// one. Undefined when no folder up to the file system's root has one.
+export async function findQueueDir(
+  root: string,
+  exists: (path: string) => Promise<boolean>,
+): Promise<string | undefined> {
+  let dir: string | undefined = root
+  while (dir !== undefined) {
+    const candidate = joinPath(dir, DIR)
+    if (await exists(candidate)) return candidate
+    const up = parentPath(dir)
+    dir = up === dir ? undefined : up
+  }
+  return undefined
+}
+
+async function queueFile($: EngineInterface, name: string): Promise<string> {
+  const root = await $.session.root()
+  const dir = (await findQueueDir(root, p => $.fs.exists(p))) ?? joinPath(root, DIR)
+  return joinPath(dir, name)
+}
+
 async function refresh($: EngineInterface): Promise<void> {
   if ((await $.state.get(isActive)).value !== true) return
+  const queuePath = await queueFile($, 'queue.md')
   try {
-    const text = await $.fs.read(QUEUE)
+    const text = await $.fs.read(queuePath)
     await $.state.set(tasks, parseQueue(text))
-  } catch {
-    // A missing or half-written file keeps the last good list.
+    await $.state.set(queueError, '')
+  } catch (err) {
+    // The list stays on screen, but the pane says it no longer follows the file.
+    const missing = !(await $.fs.exists(queuePath).catch(() => false))
+    const why = missing
+      ? `queue file not found at ${queuePath}`
+      : `could not read ${queuePath}: ${err instanceof Error ? err.message : String(err)}`
+    await $.state.set(queueError, why)
   }
   try {
-    const cfg = JSON.parse(await $.fs.read(CONFIG)) as { max_workers?: number }
+    const cfg = JSON.parse(await $.fs.read(await queueFile($, 'config.json'))) as { max_workers?: number }
     if (typeof cfg.max_workers === 'number') await $.state.set(maxWorkers, cfg.max_workers)
   } catch {
     // Keep the last value.
@@ -192,7 +237,7 @@ async function wakeIfCoordinator($: EngineInterface): Promise<void> {
   if ((await $.state.get(isActive)).value === true) return
   let marker = ''
   try {
-    marker = (await $.fs.read(MARKER)).trim()
+    marker = (await $.fs.read(await queueFile($, '.runner-session'))).trim()
   } catch {
     return
   }
@@ -218,7 +263,7 @@ export const register: Register = on => {
     await $.command.register({ name: 'queue-panel', description: 'Show the queue coordinator pane' })
     $.clock.every(3000, () => void wakeIfCoordinator($).then(() => refresh($)).catch(() => {}))
     try {
-      const marker = (await $.fs.read(MARKER)).trim()
+      const marker = (await $.fs.read(await queueFile($, '.runner-session'))).trim()
       if (marker !== '' && marker === (await $.session.id())) await activate($)
     } catch {
       // No coordinator marker: stay quiet until /queue-start, /queue-coordinator or /queue-panel.
@@ -256,6 +301,7 @@ export const register: Register = on => {
     const tools = (await $.state.get(lastTool)).value ?? {}
     const cap = (await $.state.get(maxWorkers)).value ?? 4
     const peers = (await $.state.get(sessions)).value ?? []
+    const stale = (await $.state.get(queueError)).value ?? ''
     const agents: AgentInfo[] = (await $.agent.list()).filter(a => !ENDED.includes(a.status))
     // Outside the terminal bodyColumns is only a guess (far too small in the VS Code panel),
     // so there the columns stack, nothing is cut here, and each row truncates at the real edge.
@@ -383,14 +429,20 @@ export const register: Register = on => {
         : columns === 2
           ? Math.max(1 + workerRows, tasksRows + sessionRows)
           : 1 + workerRows + tasksRows + sessionRows
-    wantedRows = 1 + tallest
+    wantedRows = 1 + (stale === '' ? 0 : 1) + tallest
 
     return (
       <Box flexDirection="column">
         <Text wrap="truncate-end">
           <Text bold>Queue </Text>
-          <Text dimColor>{cut(summary, body - 8)}</Text>
+          {stale !== '' && <Text color="warning">(stale) </Text>}
+          <Text dimColor>{cut(summary, body - 16)}</Text>
         </Text>
+        {stale !== '' && (
+          <Text color="warning" wrap="truncate-end">
+            {cut(`Not updating: ${stale}`, body)}
+          </Text>
+        )}
         {columns === 3 && (
           <Box flexDirection="row" columnGap={2}>
             {workerColumn}

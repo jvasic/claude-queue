@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 - 2026-11-25
+
+- The queue pane finds `claude-queue/` from the session's project root, not from the shell's
+  current folder, so it keeps updating after the coordinator `cd`s into a subfolder. A session
+  started in a subfolder of the repository finds it in the nearest parent folder that has one.
+- When the queue file cannot be read, the pane marks the list `(stale)` and says why, with the
+  path it tried, instead of quietly showing the last list it read.
+
 ## 0.1.0 - 2026-11-23
 
 First public release.

@@ -1,6 +1,7 @@
+import type { On } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
 
-import { parseListing, parseQueue } from './register'
+import { findQueueDir, parseListing, parseQueue } from './register'
 
 const QUEUE = [
   '---',
@@ -151,4 +152,96 @@ test('the [notes] block is not a task', async () => {
 test('a paused task is its own tag, not waiting', async () => {
   const tasks = parseQueue(['---', '[paused] Resume me', '> done: x', '---', 'Plain task', ''].join('\n'))
   expect(tasks.map(t => t.tag)).toEqual(['paused', ''])
+})
+
+// A project at /repo whose shell has cd'd into a subfolder: only absolute paths under the
+// project root reach the files, so a read relative to the working directory fails.
+function project(on: On, files: Record<string, string>): void {
+  on('session.root', () => ({ value: '/repo' }))
+  on('session.cwd', () => ({ value: '/repo/claude-queue' }))
+  on('session.id', () => ({ value: 'me' }))
+  // The engine hands these hooks the path resolved (C:\\repo\\... on Windows): compare it
+  // in one spelling.
+  const norm = (p: string): string => p.replace(/^[A-Za-z]:/, '').replace(/\\/g, '/')
+  on('fs.exists', (_, e) => ({
+    value: Object.keys(files).some(p => p === norm(e.path) || p.startsWith(norm(e.path) + '/')),
+  }))
+  on('fs.read', (_, e) => {
+    const text = files[norm(e.path)]
+    if (text === undefined) throw new Error(`ENOENT: ${e.path}`)
+    return { value: text }
+  })
+  on('agent.list', () => ({ value: [] }))
+  on('clock.now', () => ({ value: 1000 }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('tool.call', () => ({ result: { listing: '' } }))
+}
+
+const OPEN_PANE = {
+  command: 'queue-panel',
+  args: '',
+  origin: { kind: 'composer' },
+  presentation: { isFullscreen: false, columns: 200 },
+} as const
+
+const PANE_PROPS = {
+  plugin: 'task-queue',
+  surface: 'terminal',
+  component: 'Pane',
+  requestId: 'queue',
+  props: { title: 'Queue', isFocused: false, bodyColumns: 200, placement: 'inline' } as never,
+} as const
+
+test('the pane reads the queue from the project root, not the working directory', async ($, on) => {
+  project(on, {
+    '/repo/claude-queue/queue.md': QUEUE,
+    '/repo/claude-queue/config.json': '{"max_workers": 6}',
+  })
+  await $.command.run(OPEN_PANE)
+  const ui = await $.ui.mount(PANE_PROPS)
+  expect(await ui.find({ type: 'Text', text: /1 running/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Workers 0\/6/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /Not updating/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a queue file that cannot be read is shown as stale, with its path', async ($, on) => {
+  const files: Record<string, string> = {
+    '/repo/claude-queue/queue.md': QUEUE,
+    '/repo/claude-queue/config.json': '{}',
+  }
+  project(on, files)
+  await $.command.run(OPEN_PANE)
+  delete files['/repo/claude-queue/queue.md']
+  await $.command.run(OPEN_PANE)
+  const ui = await $.ui.mount(PANE_PROPS)
+  expect(
+    await ui.find({ type: 'Text', text: /Not updating: queue file not found at \/repo\/claude-queue\/queue\.md/ }),
+  ).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /\(stale\)/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a session started in a subfolder finds claude-queue/ in a parent, Windows paths too', async () => {
+  const seen: string[] = []
+  const found = await findQueueDir('C:\\repo\\backend\\app', async p => {
+    seen.push(p)
+    return p === 'C:\\repo\\claude-queue'
+  })
+  expect(found).toBe('C:\\repo\\claude-queue')
+  expect(seen).toEqual([
+    'C:\\repo\\backend\\app\\claude-queue',
+    'C:\\repo\\backend\\claude-queue',
+    'C:\\repo\\claude-queue',
+  ])
+})
+
+test('no claude-queue/ anywhere up the tree finds nothing', async () => {
+  const seen: string[] = []
+  const found = await findQueueDir('/home/me/repo', async p => {
+    seen.push(p)
+    return false
+  })
+  expect(found).toBeUndefined()
+  expect(seen).toEqual(['/home/me/repo/claude-queue', '/home/me/claude-queue', '/home/claude-queue', '/claude-queue'])
 })
