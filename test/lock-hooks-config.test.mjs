@@ -192,6 +192,34 @@ test('safety: a worker cannot push, stash, stage everything or change git outsid
   assert.equal(bash(`node queue.mjs worktree remove --slug billing-totals`), 'allow')
 })
 
+test('safety: the hook reads variables, nested shells and Git Bash paths', () => {
+  const root = safetyRepo()
+  const wt = path.join(root, '.claude', 'worktrees', 'queue-billing-totals')
+  const rel = '.claude/worktrees/queue-billing-totals'
+  const bash = (command, cwd = root) => ask(root, { agent_id: 'a1', cwd, tool_name: 'Bash', tool_input: { command } })
+  // A worktree path kept in a variable is the worktree, not a folder named $W.
+  assert.equal(bash(`cd "${root}" && W=${rel} && git -C $W add src/a.js && git -C "$W" commit -m "Billing totals"`), 'allow')
+  assert.equal(bash(`export W="${wt}"; git -C \${W} commit -m x`), 'allow')
+  assert.equal(ask(root, { agent_id: 'a1', tool_name: 'PowerShell', tool_input: { command: `$wt = "${wt}"; git -C $wt commit -m x` } }), 'allow')
+  assert.match(bash(`W=${root} && git -C $W checkout main`), /outside your worktree/)
+  // A variable the line does not set is unknown: not refused for where it points.
+  assert.equal(bash('git -C $SOMEWHERE commit -m x'), 'allow')
+  assert.match(bash('git -C $SOMEWHERE push'), /never push/)
+  // Commands inside bash -c / powershell -Command are read too.
+  assert.match(bash('bash -c "git push origin queue/x"'), /never push/)
+  assert.match(bash(`powershell -Command "git -C '${root}' reset --hard"`), /outside your worktree/)
+  assert.match(bash('echo ok && sh -c \'git stash\''), /stash/)
+  // Refs and worktrees are never changed by hand.
+  assert.match(bash('git update-ref refs/heads/main HEAD', wt), /refs by hand/)
+  assert.match(bash('git worktree add ../elsewhere', wt), /queue script/)
+  assert.equal(bash('git worktree list', wt), 'allow')
+  if (process.platform === 'win32') {
+    const msys = root.replace(/^([A-Za-z]):/, (_, d) => `/${d.toLowerCase()}`).replace(/\\/g, '/')
+    assert.match(bash(`cd ${msys} && git checkout main`, wt), /outside your worktree/)
+    assert.equal(bash(`cd ${msys}/${rel} && git commit -m x`), 'allow')
+  }
+})
+
 test('safety: a worker writes only in its worktree, the temp folders, research/ and safety_allow', () => {
   const root = safetyRepo({ safety_allow: ['docs/shared'] })
   const wt = path.join(root, '.claude', 'worktrees', 'queue-billing-totals')

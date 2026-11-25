@@ -63,6 +63,19 @@ function writeIfMissing(file, text, lines, label) {
   lines.push(`created ${label}`)
 }
 
+const STATE_FILES = {
+  'queue.md': '---\n[notes] Coordinator notes (read first; never a task)\nNothing yet.\n---\n',
+  'log.md': '# Queue log\n\nOne entry per finished task, written by the coordinator, newest last.\n',
+  'merged.md': '# Merged branches\n\nBranches applied by /queue-merge, newest last.\n',
+}
+
+// Creates the queue's state files that are not there yet.
+function writeStateFiles(q, lines) {
+  for (const [name, text] of Object.entries(STATE_FILES)) {
+    writeIfMissing(path.join(q, name), text, lines, `${toPosix(QUEUE_DIR)}/${name}`)
+  }
+}
+
 // Asks git, by all its rules, whether each folder is ignored; adds the ones that are not to
 // .git/info/exclude. With dryRun, only reports what is missing.
 export function keepOut(root, { dryRun = false } = {}) {
@@ -124,6 +137,7 @@ function migrate(root, legacy, q) {
   }
   for (const f of ['.running', '.runner-session']) fs.rmSync(path.join(q, f), { force: true })
   const lines = [`moved ${LEGACY_QUEUE_DIR}/ to ${toPosix(QUEUE_DIR)}/ (queue, log, settings and research kept)`]
+  writeStateFiles(q, lines)
   lines.push(...keepOut(root))
   lines.push(...leftovers(root))
   lines.push(`MIGRATED ${q}`)
@@ -141,14 +155,7 @@ export function init(root, { preset = 'none' } = {}) {
   fs.mkdirSync(q, { recursive: true })
   const dir = toPosix(QUEUE_DIR)
   writeIfMissing(path.join(q, 'config.json'), JSON.stringify(buildConfig(root, preset), null, 2) + '\n', lines, `${dir}/config.json (preset ${preset})`)
-  writeIfMissing(
-    path.join(q, 'queue.md'),
-    '---\n[notes] Coordinator notes (read first; never a task)\nNothing yet.\n---\n',
-    lines,
-    `${dir}/queue.md`,
-  )
-  writeIfMissing(path.join(q, 'log.md'), '# Queue log\n\nOne entry per finished task, written by the coordinator.\n', lines, `${dir}/log.md`)
-  writeIfMissing(path.join(q, 'merged.md'), '# Merged branches\n\nBranches applied by /queue-merge.\n', lines, `${dir}/merged.md`)
+  writeStateFiles(q, lines)
   const kept = keepOut(root)
   lines.push(...(kept.length > 0 ? kept : ['kept .git/info/exclude (git already ignores both folders)']))
   lines.push(`INITIALIZED ${q}`)

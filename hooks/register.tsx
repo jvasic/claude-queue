@@ -42,8 +42,9 @@ const NICKNAMES = [
   'Lynx', 'Saffron', 'Quartz', 'Willow', 'Kestrel', 'Ember', 'Fjord', 'Marten', 'Basil',
 ]
 
-// `node ".../queue.mjs" lock acquire` (or release), as the skills run it.
-const LOCK_CALL = /queue\.mjs["']?\s+lock\s+(acquire|release)\b/
+// `lock acquire` or `lock release` in any spelling (the script by path, or a `Q` shell function);
+// the script's own ACQUIRED / RELEASED in the result confirms it.
+const LOCK_CALL = /\block\s+(acquire|release)\b/
 
 export function parseQueue(text: string): QueueTask[] {
   const found: QueueTask[] = []

@@ -33,7 +33,8 @@ Below, `Q` means `node "<plugin root>/scripts/queue.mjs"`, run from the repo roo
    `.claude/queue/research/<slug>/` in the main tree, the one place outside the worktree you
    write to. Change files with the Edit and Write tools, not with shell redirection or
    heredocs (`cat > file <<EOF`): permission checks often cannot read such commands and
-   refuse them, which stops your task. Keep each shell command to one plain step.
+   refuse them, which stops your task. Keep each shell command to one plain step, and write
+   paths out in full rather than in shell variables.
 5. **Review** your own diff (`git -C <worktree> diff <BASE>` plus untracked files):
    correctness, missed call sites, scope creep.
 6. **Check.** `Q check --worktree <worktree> --tests <test paths>` with the tests for the area
@@ -52,7 +53,11 @@ Below, `Q` means `node "<plugin root>/scripts/queue.mjs"`, run from the repo roo
    the attribution lines from your instructions, if any. One commit is preferred. The commit
    guard refuses `.env` files and linked files; if it does, unstage them, never bypass it
    (`--no-verify` is a workaround).
-8. **Remove the worktree.** First `cd` to the repo root, so your shell is not standing inside
+8. **Remove the worktree**, only once the commit is done: `git -C <worktree> status
+   --porcelain` prints nothing and `git -C <worktree> log -1` shows your commit. Never in the
+   same command as the commit, never as a parallel tool call. `Q worktree remove` refuses a
+   worktree with uncommitted changes; never pass `--discard` unless the coordinator told you
+   to throw the work away. First `cd` to the repo root, so your shell is not standing inside
    the worktree (Windows will not delete a folder a shell is in), and stop any dev server or
    other process you started. Then `Q worktree remove --slug <slug>`. The branch stays. A
    `NOTE empty folder left` line is fine; report a `FAILED` line under OPEN.

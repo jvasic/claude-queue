@@ -23,6 +23,9 @@ The queue moves and never touches a tracked file.
 - A new task never reuses an existing branch: names differ by title, and `--resume` is only
   for the task that owns the branch. A task that depends on merged work starts from its batch.
 - `model_rules` replaces `models.worker` and `models.small_task` (old configs still read).
+- `worktree remove` refuses a worktree with uncommitted changes unless `--discard` is given.
+- `--tests` takes unittest's dotted names as well as paths. The full-suite log fills while it
+  runs.
 - The lock is created atomically, refreshed every minute and on each prompt, and the pane
   opens and the session is renamed only after the lock is taken. In other sessions the pane
   runs no timer, and the hooks do not start Node in a repository without a queue.

@@ -25,7 +25,8 @@ const USAGE = `usage: queue.mjs <command>
   init [--preset none|python|node|mixed]
   lock status|acquire|refresh|release
   worktree create --slug <slug> [--base <ref>] [--resume]
-  worktree remove|path|link --slug <slug> [--kind task|merge]
+  worktree remove --slug <slug> [--kind task|merge] [--discard]
+  worktree path|link --slug <slug> [--kind task|merge]
   check --worktree <path> [--tests <a,b>] [--base <ref>]
   check --worktree <path> --full [--wait-minutes <n>]
   check --wait <run id> [--wait-minutes <n>]
@@ -40,7 +41,7 @@ function parseArgs(argv) {
     const a = argv[i]
     if (a.startsWith('--')) {
       const [k, inline] = a.slice(2).split(/=(.*)/s)
-      const flag = ['full', 'test-fallback', 'resume'].includes(k)
+      const flag = ['full', 'test-fallback', 'resume', 'discard'].includes(k)
       const v = flag ? true : (inline ?? argv[++i])
       if (v === undefined) throw new QueueError(`--${k} needs a value`)
       if (k === 'tests') opts.tests.push(v)
@@ -84,6 +85,10 @@ async function main(argv) {
     case 'worktree': {
       const root = mainRoot()
       const action = words[0]
+      if (opts.slug === undefined) {
+        const hint = words[1] ? ` (write --slug ${words[1]})` : ''
+        throw new QueueError(`worktree ${action ?? '<action>'} needs --slug <slug>${hint}`)
+      }
       const kind = opts.kind ?? 'task'
       if (action === 'path') {
         say(worktreePath(root, opts.slug, kind))
@@ -93,7 +98,7 @@ async function main(argv) {
       if (action === 'create') {
         if (kind !== 'task') throw new QueueError('create is for task worktrees; the queue-merge skill makes merge worktrees with git worktree add, then runs worktree link')
         r = create(root, opts.slug, { base: opts.base, resume: opts.resume === true })
-      } else if (action === 'remove') r = remove(root, opts.slug, kind, { testFallback: opts.testFallback === true })
+      } else if (action === 'remove') r = remove(root, opts.slug, kind, { testFallback: opts.testFallback === true, discard: opts.discard === true })
       else if (action === 'link') r = link(root, opts.slug, kind)
       else throw new QueueError(`unknown worktree action: ${action} (create, remove, path, link)`)
       say(r.lines)

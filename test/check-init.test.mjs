@@ -126,6 +126,16 @@ test('check: {tests} takes --tests, falls back to default_tests, fails on a miss
   assert.match(r.out, /path not found \(relative to \.\): tests\/nope\.js/)
 })
 
+test('check: --tests takes unittest dotted module names', () => {
+  const { root, wt } = checkRepo()
+  fs.writeFileSync(path.join(wt, 'tests', 'test_api.py'), '')
+  fs.writeFileSync(path.join(wt, 'src', 'x.js'), 'ok\n')
+  let r = cli(['check', '--worktree', wt, '--tests', 'tests.test_api,tests.test_api.TestX.test_y'], root)
+  assert.match(r.out, /tests\s+PASS/, r.out)
+  r = cli(['check', '--worktree', wt, '--tests', 'tests.test_nope'], root)
+  assert.match(r.out, /path not found \(relative to \.\): tests\.test_nope/)
+})
+
 test('check: with no tests named, a test check runs nothing and says "no tests run"', () => {
   const { root, wt } = checkRepo({
     changed: [{ name: 'tests', when: ['src/**'], run: 'node tools/tests.js {tests}' }],
@@ -331,7 +341,10 @@ test('init moves a 0.1 claude-queue/ to .claude/queue/ and leaves the tracked fi
   assert.equal(fs.existsSync(q(root, '.running')), false, 'the old lock is not carried over')
   assert.deepEqual(['.gitignore', 'CLAUDE.md'].map(f => fs.readFileSync(path.join(root, f), 'utf8')), tracked)
   assert.equal(sh(['status', '--porcelain'], root), '')
-  assert.match(cli(['init'], root).out, /^ALREADY INITIALIZED/)
+  assert.ok(fs.existsSync(q(root, 'merged.md')), 'state files 0.1 lacked are created')
+  assert.ok(fs.existsSync(q(root, 'log.md')))
+  assert.equal(cli(['init'], root).out.split(/\r?\n/)[0], `ALREADY INITIALIZED ${q(root)}`)
+  assert.doesNotMatch(cli(['init'], root).out, /missing/)
 })
 
 test('init does not move a 0.1 queue while its coordinator holds the lock', () => {

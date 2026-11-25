@@ -153,6 +153,32 @@ function run(command, cwd, env, timeoutMinutes) {
   return { code: r.error ? -1 : (r.status ?? -1), secs, out }
 }
 
+// Runs a command with its output going straight into the log file, so the log can be followed
+// while it runs. Returns the output lines it wrote.
+function runToLog(command, cwd, env, timeoutMinutes, log) {
+  const started = Date.now()
+  const from = fs.statSync(log).size
+  const fd = fs.openSync(log, 'a')
+  let r
+  try {
+    r = spawnSync(command, {
+      cwd,
+      env,
+      shell: true,
+      stdio: ['ignore', fd, fd],
+      timeout: (timeoutMinutes ?? 30) * 60 * 1000,
+      windowsHide: true,
+    })
+  } finally {
+    fs.closeSync(fd)
+  }
+  const secs = Math.round((Date.now() - started) / 1000)
+  const text = fs.readFileSync(log).subarray(from).toString('utf8')
+  const out = text.split(/\r?\n/).filter(l => l.trim() !== '')
+  if (r.error) out.push(`could not run: ${r.error.message}`)
+  return { code: r.error ? -1 : (r.status ?? -1), secs, out }
+}
+
 // Runs a command whose {files} list may not fit one command line: split into as many runs as
 // needed, each with as many files as fit. The results are joined.
 function runWithFiles(template, files, cwd, env, timeoutMinutes) {
@@ -194,6 +220,23 @@ function show(print, name, state, note, detail = []) {
   print(`${name.padEnd(12)} ${state}  ${note}`)
   for (const l of detail.slice(0, DETAIL_LINES)) print(`    ${l}`)
   if (detail.length > DETAIL_LINES) print(`    ... ${detail.length - DETAIL_LINES} more lines`)
+}
+
+// A test named by path (with an optional pytest "::name"), or by dotted module name as
+// unittest takes it (tests.test_api, tests.test_api.TestX.test_y): some prefix of the dots
+// must name a folder or a .py file.
+function testExists(cwdAbs, name) {
+  const file = name.split('::')[0]
+  if (exists(path.resolve(cwdAbs, file))) return true
+  if (/[\\/]/.test(file) || !file.includes('.')) return false
+  // The longest prefix that is a module file wins (the rest are a class and a method); a
+  // folder counts only as the whole name (a package).
+  const parts = file.split('.')
+  if (exists(path.resolve(cwdAbs, ...parts))) return true
+  for (let n = parts.length; n > 0; n--) {
+    if (exists(`${path.resolve(cwdAbs, ...parts.slice(0, n))}.py`)) return true
+  }
+  return false
 }
 
 function splitTests(tests) {
@@ -295,7 +338,7 @@ export function check(root, { worktree, tests = [], base = '', full = false, wai
         show(print, c.name, 'SKIP', 'no tests run: none named (pass --tests; the full suite runs only with --full)')
         continue
       }
-      const missing = t.filter(p => !exists(path.resolve(cwdAbs, p.split('::')[0])))
+      const missing = t.filter(p => !testExists(cwdAbs, p))
       if (missing.length > 0) {
         failed = true
         show(print, c.name, 'FAIL', 'not run: path not found', missing.map(m => `path not found (relative to ${c.cwd ?? '.'}): ${m}`))
@@ -383,7 +426,7 @@ export function waitFull(root, id, { waitMinutes = 8, print = console.log } = {}
   while (!exists(f.exit) && Date.now() < until) sleep(2000)
   if (!exists(f.exit)) {
     print(`RUNNING ${id}: still going after ${waitMinutes} min; log: ${f.log}`)
-    print(`Wait again with: check --wait ${id}`)
+    print(`Wait again with: node "${SCRIPT}" check --wait ${id}`)
     return 3
   }
   const code = Number(fs.readFileSync(f.exit, 'utf8').trim())
@@ -412,8 +455,8 @@ export function runFull(root, id) {
       for (const c of list) {
         const cwdAbs = path.resolve(wt, c.cwd ?? '.')
         fs.appendFileSync(f.log, `\n===== ${c.name}: ${c.run} (in ${cwdAbs})\n`)
-        const r = run(c.run, cwdAbs, env, c.timeout_minutes ?? 120)
-        fs.appendFileSync(f.log, r.out.join('\n') + `\n===== ${c.name}: exit ${r.code}, ${r.secs}s\n`)
+        const r = runToLog(c.run, cwdAbs, env, c.timeout_minutes ?? 120, f.log)
+        fs.appendFileSync(f.log, `\n===== ${c.name}: exit ${r.code}, ${r.secs}s\n`)
         const ok = r.code === 0
         if (!ok) failed = true
         show(say, c.name, ok ? 'PASS' : 'FAIL', `${r.secs}s${ok ? '' : `, exit ${r.code}`}`, ok ? [] : r.out.slice(-DETAIL_LINES))

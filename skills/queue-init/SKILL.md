@@ -36,7 +36,8 @@ of those files yourself either.
    It prints a line per file created and what it added to `.git/info/exclude`.
 5. **Fit the config to this repo.** The presets are examples. Read the repo's own commands
    (`package.json` scripts, `pyproject.toml`, `Makefile`, the CI workflow, `CLAUDE.md`,
-   `AGENTS.md`) and edit `.claude/queue/config.json` with the Edit tool so that:
+   `AGENTS.md`) and edit `.claude/queue/config.json` with the Edit tool (never with a shell
+   script or heredoc) so that:
    - `checks.changed` runs this repo's linters and tests on changed files, each with `when`
      patterns for the files it covers, `cwd` where the command must run, `{files}` where it
      takes file paths and `{tests}` where it takes test paths. A check with `{tests}` runs

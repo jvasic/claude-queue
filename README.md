@@ -174,8 +174,9 @@ instructions in [docs/worker.md](docs/worker.md).
   command line (cmd.exe takes 8,191 characters) is split over several runs. `{files_file}`
   becomes a file listing them, one per line. `{tests}` becomes the test paths the worker
   passes with `--tests`, else `default_tests`. With neither, the check does not run and the
-  result says `no tests run`: the full suite runs only with `--full`. A test path that does
-  not exist fails the check.
+  result says `no tests run`: the full suite runs only with `--full`. Tests are paths
+  (`tests/test_api.py`, `tests/test_api.py::test_x`) or unittest's dotted names
+  (`tests.test_api`); one that does not exist fails the check.
 - `import_checks` run first. For a Python package installed in editable mode, the worktree
   would otherwise test the main tree's code:
 
@@ -215,7 +216,8 @@ it refuses `git push`, `git stash`, `git add -A` / `.` / `-u`, git commands that
 folder outside the worker's worktree, and Edit or Write calls outside it (temp folders,
 `.claude/queue/research/` and `safety_allow` excepted). It holds only the subagents named as
 a task's `> agent:` in `queue.md`, never your own sessions or other subagents. Shell commands
-are read for those git commands only; other shell writes are not parsed. When you want a
+are read for those git commands (variables set on the same line and `bash -c "..."` included,
+and refs or worktrees changed by hand); other shell writes are not parsed. When you want a
 task to push or work in the main tree (a release, a cleanup), tell the coordinator; it adds
 `> free: <what you allowed>` to that task.
 
@@ -228,6 +230,8 @@ The scripts add a few guarantees of their own:
 - A new task never takes over an existing branch: `worktree create` refuses one unless the
   worker resumes the task whose `> branch:` line names it.
 
+- Removing a worktree refuses while it holds uncommitted changes (`--discard` throws them
+  away on purpose).
 - Removing a worktree first unlinks the linked folders, then refuses to delete anything while
   any link is left inside it, so a delete can never reach through a link into your main tree.
 - A slug is lowercase letters, digits and dashes only, so it can never name a path outside

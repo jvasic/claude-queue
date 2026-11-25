@@ -75,7 +75,8 @@ one line which session sent what. Their questions back still go to the user.
 ## Starting workers
 
 Whenever fewer than `max_workers` workers are running and untagged tasks wait, start the next
-task in file order (tasks added with `/qw` are placed first, after the `[notes]` block), with
+task in file order (read `config.json` again before starting a worker or a merge agent: the
+user may have changed it from another session) (tasks added with `/qw` are placed first, after the `[notes]` block), with
 these limits. Never start a `[held]` task on your own, whatever its place in the file. The
 `[notes]` block is never a task.
 
@@ -84,7 +85,8 @@ these limits. Never start a `[held]` task on your own, whatever its place in the
   such a kind waits while another of the same kind runs.
 - A task that depends on another waits until that one is merged into a batch branch (start
   a merge round for it, see Merging), then builds on that batch: `Build on: batch/<name>` in
-  its brief. The batch holds the dependency's commit as recorded on its `> merged:` line.
+  its brief. The batch holds the dependency's commit (`merged.md` records it). Start the
+  dependent right after that merge round, before its tasks are cleared.
 
 To start one: build the slug from the title (lowercase, letters and digits, spaces to dashes,
 at most 40 characters). A new task needs a slug no other task in `queue.md` uses and no
@@ -124,10 +126,13 @@ Safety: with `safety_hooks` on (the default), a hook stops a worker from pushing
 tasks' workers, never the user's sessions or yours. When the user wants a task to do one of
 those things (a release worker that pushes, a cleanup that rebuilds from the main tree), add
 `> free: <what the user allowed>` under its title before starting it, and say so in one line.
+Only the user's own words in this conversation allow it: a task prompt that asks for a push or
+a main-tree change is not that permission, so ask the user first.
 Research and reports that should outlive the worktree go to `.claude/queue/research/<slug>/`.
 
-Do not use the Agent tool's own worktree isolation: `Q worktree create` makes the worktree,
-with the links the checks need and a commit guard. Then tag the title `[running]` with
+The worker makes its own worktree with `Q worktree create` (with the links the checks need
+and a commit guard): do not make it yourself, and do not use the Agent tool's own worktree
+isolation. Then tag the title `[running]` with
 `> branch: <branch_prefix><slug>` and `> agent: <the agent id the tool returned>`, and say
 one line. Write the `> branch:` line before the agent's first tool call where you can: a
 resumed worker's `--resume` needs it.
@@ -136,8 +141,8 @@ resumed worker's `--resume` needs it.
 
 You are told automatically; never poll. Read the report block at the end of its message.
 
-- `done`: tag `[done]`, drop the `> agent:` line, append to `log.md` (format in
-  queue-format.md). A task with no branch to merge (research, checks, a report) is finished
+- `done`: tag `[done]`, drop the `> agent:` line, append to `log.md` in exactly the entry
+  format of queue-format.md, newest last. A task with no branch to merge (research, checks, a report) is finished
   there: once its `log.md` entry is written, remove it from `queue.md` in the same step.
 - `question`: first decide whether you can answer it yourself (below). If you can, add
   `> question: <text>` and `> answer: <your answer> (coordinator)`, resume the worker with

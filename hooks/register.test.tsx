@@ -218,7 +218,8 @@ const PANE_PROPS = {
   props: { title: 'Queue', isFocused: false, bodyColumns: 200, placement: 'inline' } as never,
 } as const
 
-const ACQUIRE = { tool: 'Bash', command: 'node "/plugin/scripts/queue.mjs" lock acquire' } as const
+// As a coordinator often runs it: through a shell function named Q.
+const ACQUIRE = { tool: 'Bash', command: 'Q() { node "/plugin/scripts/queue.mjs" "$@"; }; Q lock acquire' } as const
 
 test('the pane reads the queue from the project root, not the working directory', async ($, on) => {
   project(on, {

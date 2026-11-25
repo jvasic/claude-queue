@@ -69,8 +69,8 @@ the repo's `CLAUDE.md` and `AGENTS.md`.
    `Fix after merging <branches>`; otherwise report the failing lines. Never revert committed
    branches on your own.
 7. **Record and clean up.** For each branch committed in step 5: append it to
-   `.claude/queue/merged.md` (date, branch, target, its original commit hashes, the new commit
-   hash), then delete it with `git branch -D <branch>` (force is required because the
+   `.claude/queue/merged.md`, newest last, in the line format of queue-format.md
+   (`- <date>: <branch> -> <target>. Original: <hashes>. New commit: <hash>`), then delete it with `git branch -D <branch>` (force is required because the
    cherry-picked commits are not the branch's own). Skip deletion for any branch that still
    has a worktree in `git worktree list`; report it instead. Never record or delete a branch
    that was not committed. If a merge worktree was created and no conflict is left in it,

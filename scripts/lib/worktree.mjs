@@ -278,7 +278,7 @@ function makeWritable(dir) {
   }
 }
 
-export function remove(root, slug, kind = 'task', { testFallback = false } = {}) {
+export function remove(root, slug, kind = 'task', { testFallback = false, discard = false } = {}) {
   const lines = []
   const cfg = loadConfig(root)
   const wt = worktreePath(root, slug, kind)
@@ -289,6 +289,22 @@ export function remove(root, slug, kind = 'task', { testFallback = false } = {})
     git(['worktree', 'prune'], root)
     return { lines: ['ABSENT'], code: 0 }
   }
+
+  // 0. Work that is not committed would be lost with the folder: refuse, unless asked to
+  //    throw it away.
+  // --branch puts a "## ..." line first, so the trimmed output keeps each file line's columns.
+  const status = git(['-c', 'core.quotePath=false', 'status', '--porcelain', '--branch'], wt)
+  const dirty = status.code === 0 ? status.out.split(/\r?\n/).filter(l => l.trim() !== '' && !l.startsWith('##')) : []
+  if (status.code !== 0 && !discard) {
+    return { lines: [`FAILED could not read git status in ${wt}: ${status.err}; nothing deleted`], code: 1 }
+  }
+  if (dirty.length > 0 && !discard) {
+    lines.push(`FAILED ${wt} has uncommitted changes, nothing deleted. Commit them first, or pass --discard to throw them away:`)
+    for (const l of dirty.slice(0, 20)) lines.push(`  ${l}`)
+    if (dirty.length > 20) lines.push(`  ... ${dirty.length - 20} more`)
+    return { lines, code: 1 }
+  }
+  if (dirty.length > 0) lines.push(`discarding ${dirty.length} uncommitted change${dirty.length === 1 ? '' : 's'}`)
 
   // 1. Unlink the links create made. Only the link goes, never what it points at.
   for (const raw of cfg.worktree_links) {
